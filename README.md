@@ -121,6 +121,18 @@ CLEARED`) back.
 | Unique worlds: fresh seed per career, randomised playstyles (stat skew, natural role, fitting traits), squad age/depth profiles, AI tactical identities (Catenaccio, Gegenpress, Long Ball…) and strength/reputation rolled within tier bounds | `data/playstyles.ts`, `worldGenerator.ts` |
 | AI ↔ AI transfer market across all five countries during windows | `transferEngine.ts` (`aiWorldTransfers`) |
 
+## Play online (GitHub Pages)
+
+`.github/workflows/deploy.yml` builds and publishes the game on every push to `main`.
+
+1. Push/upload the repo to GitHub (include `.github/workflows/deploy.yml` and `package-lock.json`).
+2. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. Open the **Actions** tab and wait for *Deploy to GitHub Pages* to go green
+   (re-run it once if it started before step 2).
+4. Play at `https://<your-user>.github.io/<repo-name>/`.
+
+Saves live in each player's own browser (localStorage), so no server is needed.
+
 ## Dev scripts
 
 * `npm run sim:season -- ENG 42` — headless 3-season career (prints tables, timings, save size)
