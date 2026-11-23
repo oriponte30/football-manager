@@ -14,7 +14,7 @@ import { nextId } from './ids';
 import { wageFor } from './playerGenerator';
 import { canAffordWage, credit, fmtMoney } from './financeEngine';
 import { newsTransfer } from './newsEngine';
-import { generateScoutReport } from './scoutingEngine';
+import { generateScoutReport, unscoutedOvrRange } from './scoutingEngine';
 
 const POS_VALUE: Record<string, number> = { GK: 0.8, CB: 0.95, LB: 0.9, RB: 0.9, CDM: 0.95, CM: 1, CAM: 1.1, LW: 1.08, RW: 1.08, ST: 1.18 };
 
@@ -621,7 +621,9 @@ export function marketList(g: GameState, userClubId: string, kind: 'TRANSFER' | 
     }
     out.push({ player: p, clubName: club ? club.name : 'Free Agent', value: valuePlayer(p), kind });
   }
-  return out.sort((a, b) => b.value - a.value).slice(0, 150);
+  // sorted by what's public (scouted rating if on file, press estimate otherwise), never by hidden value
+  const est = (p: Player) => { const r = g.scoutReports[p.id]?.ovrRange ?? unscoutedOvrRange(p); return (r[0] + r[1]) / 2; };
+  return out.sort((a, b) => est(b.player) - est(a.player));
 }
 
 /**

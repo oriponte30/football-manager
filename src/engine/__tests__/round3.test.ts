@@ -6,7 +6,7 @@ import { changeFormation } from '../lineup';
 import { afterMatchFamiliarity } from '../familiarityEngine';
 import { staffInterest, staffCeiling, generateStaff } from '../staffGenerator';
 import { counterIncomingBid } from '../transferEngine';
-import { startDayAfter, beginPrep, runDrill, recoverySession, markWatched } from '../weekEngine';
+import { startDayAfter, beginPrep, runDrill, recoverySession, markWatched, repeatDrillPlan, weekSessions } from '../weekEngine';
 import { refreshShortlist, setScoutBrief, briefOptionsFor } from '../shortlistEngine';
 import type { GameState } from '../../types/world';
 
@@ -127,6 +127,7 @@ describe('the manager\'s week', () => {
       kid.fitness = 100;
       expect(runDrill(g, rng, kid.id, 'PASSING').ok || kid.injuryWeeks > 0).toBe(true);
       kid.injuryWeeks = 0;
+      if (w === 30) for (const id of [others[0], others[1]]) { g.players[id].fitness = 100; g.players[id].injuryWeeks = 0; runDrill(g, rng, id, 'PASSING'); }
       if (w === 1) {
         expect(runDrill(g, rng, kid.id, 'PASSING').ok).toBe(false);
         expect(runDrill(g, rng, others[0], 'PASSING').ok).toBe(true);
@@ -134,6 +135,11 @@ describe('the manager\'s week', () => {
         expect(runDrill(g, rng, others[2], 'PASSING').ok).toBe(false);
       }
     }
+    // the next week, last week's program is offered and repeats in one go
+    g.season.matchweek = 31;
+    for (const id of [kid.id, others[0], others[1]]) { g.players[id].fitness = 100; g.players[id].injuryWeeks = 0; }
+    repeatDrillPlan(g, rng);
+    expect(weekSessions(g).map((x) => x.playerId).sort()).toEqual([kid.id, others[0], others[1]].sort());
     const gain = kid.stats.passing - start;
     expect(gain).toBeLessThanOrEqual(18);
   });

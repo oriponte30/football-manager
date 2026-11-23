@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
-import { useGame, useUserClub, Modal, PosTag, NationTag, ovrRead, paRead } from '../ui';
+import { useGame, useUserClub, Modal, PosTag, NationTag, ovrRead, paRead, valueRead } from '../ui';
 import { PlayerFace } from '../Face';
-import { valuePlayer } from '../../engine/transferEngine';
 import type { FaxMessage } from '../../types/transfers';
 import { fmtMoney } from '../../engine/financeEngine';
 
@@ -163,7 +162,7 @@ function InvolvedPlayers({ f }: { f: FaxMessage }) {
               <span className="block text-[11px] opacity-60">{label}</span>
               <span className="block font-bold underline truncate">{p.firstName} {p.lastName}</span>
               <span className="flex items-center gap-1 flex-wrap"><PosTag pos={p.position} /> <NationTag code={p.nationality} /> {p.age} yrs · {owner?.shortName ?? 'Free'}</span>
-              <span className="block">OVR {o.text} · POT {pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'} · {fmtMoney(valuePlayer(p))}</span>
+              <span className="block">OVR {o.text} · POT {pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'} · {valueRead(g, p, club.id)}</span>
             </span>
           </button>
         );

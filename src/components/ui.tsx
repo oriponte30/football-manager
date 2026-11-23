@@ -9,6 +9,8 @@ import { perceivedPA, unscoutedOvrRange } from '../engine/scoutingEngine';
 import { MORALE_LABELS } from '../types/player';
 import { nationOf } from '../data/nationalities';
 import { SEVERITY_LABEL } from '../data/injuries';
+import { valuePlayer } from '../engine/transferEngine';
+import { fmtMoney } from '../engine/financeEngine';
 
 export function useGame(): GameState {
   const g = useGameStore((s) => s.game);
@@ -140,6 +142,21 @@ export function ovrRead(g: GameState, p: Player, userClubId: string): { text: st
   const rep = g.scoutReports[p.id];
   const r = rep ? rep.ovrRange : unscoutedOvrRange(p);
   return { text: `${r[0]}–${r[1]}`, exact: false, range: r };
+}
+
+/** Market value only once your staff know the player: your own squad, or someone with a scout report on file. */
+export function valueKnown(g: GameState, p: Player, userClubId: string): boolean {
+  return p.clubId === userClubId || g.pendingYouth.includes(p.id) || !!g.scoutReports[p.id];
+}
+export function valueRead(g: GameState, p: Player, userClubId: string): string {
+  if (!p.clubId) return 'no fee';
+  return valueKnown(g, p, userClubId) ? fmtMoney(valuePlayer(p)) : '?? (scout him)';
+}
+/** A rough prefill for a bid on an unscouted player: what the papers think he's worth. */
+export function roughValue(p: Player): number {
+  const r = unscoutedOvrRange(p);
+  const v = valuePlayer({ ...p, ca: Math.round((r[0] + r[1]) / 2), truePA: Math.round((r[0] + r[1]) / 2) + (p.age <= 23 ? 6 : 0) });
+  return Math.round(v / 25_000) * 25_000 || 25_000;
 }
 
 /** PA read: Head Coach for own squad (Youth Director for prospects), scout report for others. */

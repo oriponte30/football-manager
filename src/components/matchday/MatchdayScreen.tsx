@@ -9,7 +9,7 @@ import { userFixturesThisWeek, leaguePosition, userInCup } from '../../engine/se
 import { squadStrength } from '../../engine/lineup';
 import { sortedTable } from '../../engine/shadowLeagueEngine';
 import { unscoutedOvrRange } from '../../engine/scoutingEngine';
-import { RECOVERY_INFO, drillAvailable, weekSessions, drillProgressOf, drillRate, DRILLS_PER_WEEK } from '../../engine/weekEngine';
+import { RECOVERY_INFO, drillAvailable, weekSessions, drillProgressOf, drillRate, DRILLS_PER_WEEK, lastDrillPlan } from '../../engine/weekEngine';
 import { DRILLS, type DrillKind } from '../../data/drills';
 import { hash01 } from '../../engine/rng';
 import { playerName } from '../../engine/ratings';
@@ -372,11 +372,12 @@ function DrillPanel({ compact }: { compact?: boolean }) {
   const done = new Set(sessions.map((x) => x.playerId));
   const squad = useMemo(() => club.playerIds.map((id) => g.players[id]).filter((p) => p && p.injuryWeeks === 0).sort((a, b) => a.age - b.age || b.ca - a.ca), [g, club]);
   const choices = squad.filter((p) => !done.has(p.id));
-  const [pidRaw, setPid] = useState<string>(choices[0]?.id ?? '');
+  const plan = lastDrillPlan(g).filter((x) => !done.has(x.playerId));
+  const [pidRaw, setPid] = useState<string>(plan[0]?.playerId ?? choices[0]?.id ?? '');
   const pid = choices.some((p) => p.id === pidRaw) ? pidRaw : choices[0]?.id ?? '';
   const p = g.players[pid];
   const opts = DRILLS.filter((d) => (p?.position === 'GK' ? !d.outfieldOnly : !d.gkOnly));
-  const [drillRaw, setDrill] = useState<DrillKind>(opts[0]?.id ?? 'PASSING');
+  const [drillRaw, setDrill] = useState<DrillKind>(plan.find((x) => x.playerId === pid)?.drill ?? opts[0]?.id ?? 'PASSING');
   const drill = opts.some((d) => d.id === drillRaw) ? drillRaw : opts[0]?.id ?? 'PASSING';
   const def = DRILLS.find((d) => d.id === drill);
   const avail = drillAvailable(g);
@@ -403,6 +404,17 @@ function DrillPanel({ compact }: { compact?: boolean }) {
               </div>
             );
           })}
+        </div>
+      )}
+      {avail && plan.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm border border-dashed border-black/30 rounded p-2 bg-white/40">
+          <span className="font-bold">Last program:</span>
+          {plan.map((x) => {
+            const pp = g.players[x.playerId];
+            const unavailable = !pp || pp.injuryWeeks > 0 || pp.fitness < 55 || done.has(x.playerId);
+            return <span key={x.playerId} className={unavailable ? 'line-through opacity-50' : ''}>{pp?.lastName} · {DRILLS.find((d) => d.id === x.drill)?.label}</span>;
+          })}
+          <button className="btn btn-sm btn-green ml-auto" onClick={s.repeatDrills}>RUN IT AGAIN</button>
         </div>
       )}
       {avail && choices.length > 0 ? (

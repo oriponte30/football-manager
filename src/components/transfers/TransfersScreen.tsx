@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Search, Binoculars } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
-import { useGame, useUserClub, PosTag, ovrRead, paRead, Stars, staffStars, NationTag } from '../ui';
+import { useGame, useUserClub, PosTag, ovrRead, paRead, Stars, staffStars, NationTag, valueKnown, valueRead, roughValue } from '../ui';
 import { PlayerFace } from '../Face';
 import { liveShortlist, currentBrief, briefOptionsFor, briefLevelFor, type BriefOption } from '../../engine/shortlistEngine';
 import { COUNTRIES } from '../../data/countries';
 import type { CountryCode } from '../../types/world';
 import CRTMonitor from '../layout/CRTMonitor';
 import YouthIntakeFolder from './YouthIntakeFolder';
-import { marketList, valuePlayer } from '../../engine/transferEngine';
+import { marketList } from '../../engine/transferEngine';
 import { fmtMoney } from '../../engine/financeEngine';
 import { fullName } from '../../engine/ratings';
 
@@ -47,7 +47,7 @@ function Market({ kind }: { kind: 'TRANSFER' | 'FREE' | 'LOAN' }) {
   const [maxVal, setMaxVal] = useState(() => [100000, 250000, 500000, 1000000, 3000000].find((v) => v >= club.finances.bank) ?? 0);
   const [scope, setScope] = useState<'ALL' | 'HOME' | 'ABROAD'>('ALL');
   const list = useMemo(() => marketList(g, club.id, kind, q, pos, maxAge), [g, club.id, kind, q, pos, maxAge]);
-  const filtered = list.filter((m) => (maxVal ? m.value <= maxVal : true) && (scope === 'ALL' || !m.player.clubId || (scope === 'HOME' ? g.clubs[m.player.clubId].country === g.activeCountry : g.clubs[m.player.clubId].country !== g.activeCountry)));
+  const filtered = list.filter((m) => (maxVal ? (valueKnown(g, m.player, club.id) ? m.value : roughValue(m.player)) <= maxVal : true) && (scope === 'ALL' || !m.player.clubId || (scope === 'HOME' ? g.clubs[m.player.clubId].country === g.activeCountry : g.clubs[m.player.clubId].country !== g.activeCountry))).slice(0, 150);
   return (
     <CRTMonitor title={kind === 'TRANSFER' ? 'TRANSFER MARKET' : kind === 'FREE' ? 'FREE AGENTS — $0 FEE' : 'LOAN LIST — FRINGE & YOUNG PLAYERS'} page={kind === 'TRANSFER' ? '410' : kind === 'FREE' ? '411' : '412'}>
       <div className="flex flex-wrap gap-2 items-center mb-2 text-lg">
@@ -76,7 +76,7 @@ function Market({ kind }: { kind: 'TRANSFER' | 'FREE' | 'LOAN' }) {
               <span>{p.age}</span>
               <span className={g.scoutReports[p.id] ? 't-green' : ''}>{o.text}</span>
               <span>{pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'}</span>
-              <span>{fmtMoney(m.value)}</span>
+              <span className={valueKnown(g, p, club.id) ? 't-green' : 't-dim'}>{valueKnown(g, p, club.id) ? fmtMoney(m.value) : '??'}</span>
               <span className="flex gap-1">
                 <button disabled={scouting} title="Send scout" className="border border-amber-crt/50 px-1 disabled:opacity-40" onClick={() => scout(p.id)}><Binoculars size={14} /></button>
                 <button className="border border-amber-crt/50 px-1" onClick={() => openDossier(p.id)}>{kind === 'FREE' ? 'SIGN' : 'BID'}</button>
@@ -86,7 +86,7 @@ function Market({ kind }: { kind: 'TRANSFER' | 'FREE' | 'LOAN' }) {
         })}
         {filtered.length === 0 && <div className="t-dim">No players match.</div>}
       </div>
-      <div className="t-dim text-base mt-2">GREEN OVR = scouted (report on file). Unscouted figures are rough press estimates.</div>
+      <div className="t-dim text-base mt-2">GREEN = scouted (report on file). Unscouted ratings are rough press estimates, and values stay hidden until your scout has seen him.</div>
     </CRTMonitor>
   );
 }
@@ -182,7 +182,7 @@ function Shortlist() {
                 <button className="font-bold truncate block text-left hover:underline w-full" onClick={() => openDossier(p.id)}>{fullName(p)}</button>
                 <div className="flex items-center gap-1 flex-wrap"><PosTag pos={p.position} /> <NationTag code={p.nationality} /> <span>{p.age}</span></div>
                 <div className="truncate opacity-80">{owner ? `${owner.name}${owner.country !== g.activeCountry ? ` (${owner.country})` : ''}` : 'Free agent'}</div>
-                <div>OVR <b className={g.scoutReports[p.id] ? 'text-green-800' : ''}>{o.text}</b> · POT {pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'} · {owner ? fmtMoney(valuePlayer(p)) : 'no fee'}</div>
+                <div>OVR <b className={g.scoutReports[p.id] ? 'text-green-800' : ''}>{o.text}</b> · POT {pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'} · {valueRead(g, p, club.id)}</div>
                 {note && <div className="handwritten leading-5">{note}</div>}
                 <div className="flex gap-1 mt-1">
                   <button className="btn btn-sm" disabled={scouting || !!g.scoutReports[p.id]} onClick={() => scout(p.id)}>{scouting ? 'SCOUTING…' : g.scoutReports[p.id] ? 'SCOUTED' : 'SCOUT'}</button>

@@ -126,6 +126,31 @@ export function drillRate(p: Player, coachStars: number): number {
   return (0.13 + 0.07 * coachStars) * age * room;
 }
 
+/** The most recent completed program (last week's, or earlier if a week was skipped). */
+export function lastDrillPlan(g: GameState): { playerId: string; drill: DrillKind }[] {
+  const d = g.weekDrills;
+  const current = d && d.year === g.season.year && d.week === g.season.matchweek;
+  const plan = current ? g.lastDrillPlan ?? [] : d?.sessions.map(({ playerId, drill }) => ({ playerId, drill })) ?? g.lastDrillPlan ?? [];
+  const club = userClub(g);
+  return plan.filter((x) => club && g.players[x.playerId]?.clubId === club.id);
+}
+
+/** Run last week's program again: same players, same drills (skips anyone injured, tired or already done). */
+export function repeatDrillPlan(g: GameState, rng: Rng): { ok: boolean; message: string } {
+  const plan = lastDrillPlan(g);
+  if (plan.length === 0) return { ok: false, message: 'No previous program to repeat.' };
+  const out: string[] = [];
+  let ran = 0;
+  for (const x of plan) {
+    if (!drillAvailable(g)) break;
+    if (weekSessions(g).some((s) => s.playerId === x.playerId)) continue;
+    const r = runDrill(g, rng, x.playerId, x.drill);
+    if (r.ok) ran++;
+    out.push(r.message);
+  }
+  return { ok: ran > 0, message: out.join(' ') || 'Nothing to repeat.' };
+}
+
 export function runDrill(g: GameState, rng: Rng, playerId: string, drill: DrillKind): { ok: boolean; message: string } {
   const club = userClub(g);
   const p = g.players[playerId];
@@ -157,6 +182,8 @@ export function runDrill(g: GameState, rng: Rng, playerId: string, drill: DrillK
   }
   p.fitness = clamp(p.fitness - def.fitness, 30, 100);
   p.moraleValue = clamp(p.moraleValue + 1, 0, 100);
+  // first session of a new week: last week's program becomes the one we offer again
+  if (sessions.length === 0 && g.weekDrills && g.weekDrills.sessions.length > 0) g.lastDrillPlan = g.weekDrills.sessions.map(({ playerId: pid, drill: d }) => ({ playerId: pid, drill: d }));
   g.weekDrills = { year: g.season.year, week: g.season.matchweek, sessions: [...sessions, { playerId, drill, gained }] };
   if (rng.chance(0.01 + (def.id === 'SPRINTS' ? 0.008 : 0))) {
     const inj = rollInjury(rng, staffStarsOf(g, club.id, 'PHYSIO'), 'TRAINING', g.season.year, g.season.matchweek);

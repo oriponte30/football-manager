@@ -23,7 +23,7 @@ import type { RecoveryChoice } from '../types/world';
 import type { DrillKind } from '../data/drills';
 import type { InstructionId } from '../data/instructions';
 import { INSTRUCTIONS } from '../data/instructions';
-import { markWatched, startDayAfter, recoverySession, runDrill, answerPress, beginPrep } from '../engine/weekEngine';
+import { markWatched, startDayAfter, recoverySession, runDrill, repeatDrillPlan, answerPress, beginPrep } from '../engine/weekEngine';
 
 export type Screen = 'MATCHDAY' | 'TACTICS' | 'TRANSFERS' | 'CLUB' | 'NEWS';
 
@@ -71,6 +71,7 @@ interface GameStore {
   finishMatchday(): void;
   recovery(choice: RecoveryChoice): void;
   drill(playerId: string, drill: DrillKind): void;
+  repeatDrills(): void;
   answerPress(idx: number): void;
   beginPrep(): void;
   setInstruction(slot: number, id: InstructionId | null): void;
@@ -233,6 +234,7 @@ export const useGameStore = create<GameStore>()(
         finishMatchday: () => mutate((g, rng) => { if (g.phase === 'MATCHDAY') startDayAfter(g, rng); }, true),
         recovery: (choice) => { mutate((g, rng) => recoverySession(g, rng, choice)); },
         drill: (playerId, d) => { mutate((g, rng) => runDrill(g, rng, playerId, d)); },
+        repeatDrills: () => { mutate((g, rng) => repeatDrillPlan(g, rng)); },
         answerPress: (idx) => { mutate((g) => answerPress(g, idx)); },
         beginPrep: () => mutate((g, rng) => { beginPrep(g, rng); }, true),
         setInstruction: (slot, id) => mutate((g) => {

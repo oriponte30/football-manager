@@ -210,6 +210,8 @@ export interface GameState {
   lastDrill: { year: number; week: number; playerId: string; drill: DrillKind; gained: string } | null;
   /** this week's one-on-one sessions (up to 3 players) */
   weekDrills?: { year: number; week: number; sessions: { playerId: string; drill: DrillKind; gained: string }[] } | null;
+  /** the previous week's one-on-one program, offered again */
+  lastDrillPlan?: { playerId: string; drill: DrillKind }[];
   /** fractional progress from one-on-one work, keyed "playerId:stat" (1.0 = +1) */
   drillProgress?: Record<string, number>;
   /** the Chief Scout's brief for his shortlist */

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Search, Send, FileSignature, Plane, UserMinus } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
-import { useGame, useUserClub, Modal, StatBar, MoraleIcon, FitnessBar, FormDots, PosTag, paRead, ovrRead, Stars, NationTag, InjuryBadge } from '../ui';
+import { useGame, useUserClub, Modal, StatBar, MoraleIcon, FitnessBar, FormDots, PosTag, paRead, ovrRead, Stars, NationTag, InjuryBadge, valueRead, valueKnown, roughValue } from '../ui';
 import { SEVERITY_LABEL } from '../../data/injuries';
 import { OUTFIELD_STATS, GK_STATS, MORALE_LABELS, type IndividualTrainingFocus, type StatKey } from '../../types/player';
 import { avgRating, fullName, moraleLevel } from '../../engine/ratings';
@@ -111,7 +111,7 @@ export default function PlayerDossierModal({ playerId, onClose }: { playerId: st
               <span>xG / xA</span><span>{p.season.xg.toFixed(1)} / {p.season.xa.toFixed(1)}</span>
               <span>Contract</span><span>{p.clubId ? `${fmtMoney(p.contract.wage)}/wk · ${p.contract.yearsLeft} yr left` : 'None'}</span>
               {p.contract.releaseClause !== null && <><span>Release clause</span><span className="text-red-800">{fmtMoney(p.contract.releaseClause)}</span></>}
-              <span>Market value</span><span>{fmtMoney(valuePlayer(p))}</span>
+              <span>Market value</span><span>{valueRead(g, p, club.id)}</span>
             </div>
           </div>
         </div>
@@ -168,7 +168,7 @@ function BidDesk({ playerId, scouting, hasReport }: { playerId: string; scouting
   const s = useGameStore();
   const p = g.players[playerId];
   const [type, setType] = useState<'TRANSFER' | 'LOAN'>('TRANSFER');
-  const [fee, setFee] = useState(valuePlayer(p));
+  const [fee, setFee] = useState(valueKnown(g, p, club.id) ? valuePlayer(p) : roughValue(p));
   const [wage, setWage] = useState(demandedWage(p, club, g));
   const [years, setYears] = useState(3);
   const [include, setInclude] = useState(false);

@@ -21,6 +21,11 @@ const DIALS: { key: keyof TeamDials; label: string; opts: [string, string][] }[]
   { key: 'attackingFocus', label: 'FOCUS', opts: [['WINGS', 'Wings'], ['BALANCED', 'Balanced'], ['MIDDLE', 'Middle']] },
 ];
 const DUTIES: Duty[] = ['DEFEND', 'SUPPORT', 'ATTACK'];
+const DUTY_HINT: Record<Duty, string> = {
+  DEFEND: 'stays back. Defends and wins the ball more, shoots and creates less.',
+  SUPPORT: 'balanced. Does a bit of both.',
+  ATTACK: 'bombs forward. Shoots and creates more, helps less at the back.',
+};
 const TRAINING: [TeamTrainingFocus, string][] = [['BALANCED', 'Balanced'], ['ATTACKING', 'Attacking'], ['DEFENDING', 'Defending'], ['PHYSICAL', 'Physical']];
 const ORDER: Record<string, number> = { GK: 0, CB: 1, LB: 2, RB: 3, CDM: 4, CM: 5, CAM: 6, LW: 7, RW: 8, ST: 9 };
 const order = (p: Player) => ORDER[p.position] ?? 10;
@@ -412,8 +417,9 @@ function RolePanel({ slotIdx, onClose }: { slotIdx: number; onClose: () => void 
         ))}
       </div>
       <div className="flex gap-2 mt-2">
-        {DUTIES.map((d) => <button key={d} className={`btn btn-sm ${r?.duty === d ? 'btn-amber' : ''}`} onClick={() => s.setDuty(slotIdx, d)}>{d}</button>)}
+        {DUTIES.map((d) => <button key={d} className={`btn btn-sm ${r?.duty === d ? 'btn-amber' : ''}`} onClick={() => s.setDuty(slotIdx, d)} title={DUTY_HINT[d]}>{d}</button>)}
       </div>
+      <div className="text-xs mt-1 opacity-80">Duty: {r ? DUTY_HINT[r.duty] : 'how far forward he plays.'}</div>
       <div className="mt-3 text-sm font-bold">INSTRUCTION</div>
       <div className="flex flex-wrap gap-2 mt-1">
         <button className={`chip ${!instr ? 'on' : ''}`} onClick={() => s.setInstruction(slotIdx, null)}>None</button>
