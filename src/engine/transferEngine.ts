@@ -362,7 +362,7 @@ export function freeAgentChance(g: GameState, p: Player, buyer: Club, wage: numb
   const gap = p.ca - avgCa(g, buyer);
   const star = p.ca >= 74 && p.age < 34;
   if (buyer.tier >= 2 && (gap >= (p.age >= 33 ? 16 : 12) || star)) {
-    return { chance: 0, hard: `Club reputation too low: ${p.lastName} will not drop down to a club of your level, whatever you pay.`, repHit: 1 };
+    return { chance: 0, hard: `Club level too low: ${p.lastName} is far better than your squad's average and will not drop down to a club like yours, whatever you pay.`, repHit: 1 };
   }
   // unemployed players are ~9 points more forgiving about stature than players at a club
   const stature = clamp((p.ca - 40) * 1.6, 0, 100);
@@ -591,13 +591,16 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
   processLoanList(g, rng, userClubId);
   if (g.bids.some((b) => b.direction === 'INCOMING' && b.status === 'PENDING')) return;
   if (listedTransferBid(g, rng, userClubId)) return;
-  if (g.season.matchweek <= 2 || !rng.chance(0.24)) return;
+  if (g.season.matchweek <= 1 || !rng.chance(0.38)) return;
   const user = g.clubs[userClubId];
   const squad = user.playerIds.map((id) => g.players[id]).filter((p) => p && !p.loanFromClubId);
   if (squad.length < 18) return;
   const target = rng.weighted(squad, squad.map((p) => Math.pow(Math.max(1, valuePlayer(p) / 1e5), 1.2) * (p.age <= 23 ? 1.5 : 1)));
   if (g.bids.some((b) => b.playerId === target.id && b.status === 'PENDING')) return;
-  const buyers = Object.values(g.clubs).filter((c) => c.id !== userClubId && (c.tier < user.tier || c.reputation > user.reputation + 8) && c.finances.bank > valuePlayer(target));
+  const sameTierOk = rng.chance(0.5); // peers of about your size make offers too, not just bigger clubs
+  const buyers = Object.values(g.clubs).filter((c) => !c.isShadow && c.id !== userClubId
+    && (c.tier < user.tier || c.reputation > user.reputation + 8 || (sameTierOk && c.tier === user.tier && c.reputation >= user.reputation - 2))
+    && c.finances.bank > valuePlayer(target));
   if (buyers.length === 0) return;
   const buyer = rng.pick(buyers);
   const base = valuePlayer(target) * (isForeignSale(user, buyer) ? COUNTRIES[user.country].foreignFeeMult : 1);

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { withLiveTables } from '../../engine/liveTable';
 import { CloudButton } from '../account/CloudLayer';
 import { Trophy, Users, ArrowLeftRight, Building2, Save, AlertTriangle, Newspaper, X } from 'lucide-react';
 import { useGameStore, type Screen } from '../../store/useGameStore';
@@ -28,7 +29,8 @@ export default function DeskShell() {
   const { screen, setScreen, faxOpen, setFaxOpen, dossierId, openDossier, toasts, saveError, simming, newsOpen, setNewsOpen } = useGameStore();
   const unread = g.faxes.filter((f) => !f.read).length;
   const actionable = g.faxes.filter((f) => !f.resolved).length;
-  const pos = leaguePosition(g, club.id);
+  const liveScore = useGameStore((st) => st.liveScore);
+  const pos = leaguePosition(withLiveTables(g, liveScore), club.id);
   const [ringing, setRinging] = useState(false);
   const [dilemmaLater, setDilemmaLater] = useState<string | null>(null);
   const quietPhase = g.phase === 'MATCHDAY' || simming;

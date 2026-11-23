@@ -186,6 +186,9 @@ function LiveMatch({ r, label, finished, onFullTime, onContinue, continueLabel }
   const hg = done ? r.homeGoals : goals.filter((e) => e.clubId === r.homeId).length;
   const ag = done ? r.awayGoals : goals.filter((e) => e.clubId === r.awayId).length;
   const lastGoal = goals[goals.length - 1];
+  // the league table on the right follows this score as it changes
+  const setLiveScore = useGameStore((st) => st.setLiveScore);
+  useEffect(() => { setLiveScore({ resultId: r.id, hg, ag }); }, [r.id, hg, ag, setLiveScore]);
   useEffect(() => {
     if (!lastGoal || done) return;
     setFlash(lastGoal.clubId === me ? 'mine' : 'theirs');

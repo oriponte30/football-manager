@@ -5,6 +5,7 @@ import { acceptJob, advanceMatchweek } from '../seasonLoop';
 import { listPlayer, aiIncomingBids, processLoanList, maybeAiTradeFax, valuePlayer, windowOpen, windowFor, windowWeeks, avgCa, demandedWage, freeAgentChance, signFreeAgent } from '../transferEngine';
 import { maybeCreateDilemma, applyDilemmaEffects } from '../moraleEngine';
 import { startDayAfter, markWatched, answerPress } from '../weekEngine';
+import { liveTables } from '../liveTable';
 import { weeklyXP, applyXP, ageOneYear } from '../progressionEngine';
 import { ovrFor } from '../ratings';
 import type { PlayerMatchStats } from '../../types/match';
@@ -189,7 +190,7 @@ describe('free agents: coverage, windows, signing odds', () => {
     expect(at(0.8)).toBeLessThan(0.05);
     const star = { ...p, ca: Math.round(mine) + 13 } as typeof p;
     expect(freeAgentChance(g, star, club, 1e9).chance).toBe(0);
-    expect(freeAgentChance(g, star, club, 1e9).hard).toMatch(/reputation/i);
+    expect(freeAgentChance(g, star, club, 1e9).hard).toMatch(/club level too low/i);
   });
   it('signing is deterministic per week and limited to two offers, with a clear reason', () => {
     const g = career(910);
@@ -203,5 +204,52 @@ describe('free agents: coverage, windows, signing odds', () => {
     expect(r1.ok).toBe(false);
     expect(r1.message).toMatch(/wage offer below expectations/i);
     expect(g.faxes.some((f) => f.title.startsWith('TALKS FAILED'))).toBe(true);
+  });
+});
+
+describe('live table', () => {
+  it('rolls the week back, then replays only the live score, and shows the real table once watched', () => {
+    const g = career(950);
+    const mineId = g.manager.clubId!;
+    const lid = g.clubs[mineId].leagueId;
+    const snap = (t: Record<string, import('../../types/world').TableRow>) => Object.fromEntries(Object.entries(t).map(([k, r]) => [k, [r.p, r.w, r.d, r.l, r.gf, r.ga, r.pts]]));
+    const before = snap(g.leagues[lid].table);
+    advanceMatchweek(g);
+    expect(g.phase).toBe('MATCHDAY');
+    const mine = g.lastUserResults.find((r) => r.competition === 'LEAGUE')!;
+    expect(mine).toBeTruthy();
+    // nothing watched yet and no live score: exactly the table before the week
+    expect(snap(liveTables(g, null)![lid])).toEqual(before);
+    // a live 2-0 for the home side counts for that match only; other results stay hidden
+    const live = liveTables(g, { resultId: mine.id, hg: 2, ag: 0 })![lid];
+    expect(live[mine.homeId].pts).toBe(before[mine.homeId][6] + 3);
+    expect(live[mine.awayId].pts).toBe(before[mine.awayId][6]);
+    expect(live[mine.homeId].gf).toBe(before[mine.homeId][4] + 2);
+    const other = Object.keys(before).find((id) => id !== mine.homeId && id !== mine.awayId)!;
+    expect(snap({ [other]: live[other] })[other]).toEqual(before[other]);
+    // everything watched: nothing is hidden any more
+    for (const r of g.lastUserResults) markWatched(g, r.id);
+    expect(liveTables(g, null)).toBeNull();
+  });
+});
+
+describe('transfer offer frequency', () => {
+  it('a player at a normal club gets noticeably more offers in a window', () => {
+    let offers = 0, weeks = 0;
+    for (let seed = 0; seed < 14; seed++) {
+      const g = career(1000 + seed);
+      const club = g.clubs[g.manager.clubId!];
+      const rng = createRng(seed);
+      for (let mw = 2; mw <= 5; mw++) {
+        g.season.matchweek = mw; g.season.window = 'SUMMER';
+        g.bids = g.bids.filter((b) => b.direction !== 'INCOMING');
+        const n0 = g.bids.length;
+        aiIncomingBids(g, rng, club.id);
+        weeks++;
+        if (g.bids.length > n0) offers++;
+      }
+    }
+    // roughly a third of window weeks should bring an offer (was about a quarter)
+    expect(offers / weeks).toBeGreaterThan(0.26);
   });
 });

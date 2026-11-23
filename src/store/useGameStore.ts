@@ -50,6 +50,9 @@ interface GameStore {
   saveError: boolean;
   /** increments after each played matchweek (drives the CRT ticker) */
   tickerKey: number;
+  /** score of the match being watched right now (drives the live league table; not saved) */
+  liveScore: { resultId: string; hg: number; ag: number } | null;
+  setLiveScore(v: { resultId: string; hg: number; ag: number } | null): void;
 
   setScreen(s: Screen): void;
   openDossier(id: string | null): void;
@@ -166,6 +169,8 @@ export const useGameStore = create<GameStore>()(
         toasts: [],
         saveError: false,
         tickerKey: 0,
+        liveScore: null,
+        setLiveScore: (v) => set({ liveScore: v }),
 
         setScreen: (s) => set({ screen: s }),
         openDossier: (id) => set({ dossierId: id }),

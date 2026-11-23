@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useGame } from '../ui';
+import { useGameStore } from '../../store/useGameStore';
+import { withLiveTables, hasPendingMatches } from '../../engine/liveTable';
 import CRTMonitor from '../layout/CRTMonitor';
 import { sortedTable } from '../../engine/shadowLeagueEngine';
 import type { Fixture, GameState, TableRow } from '../../types/world';
@@ -9,7 +11,11 @@ type Tab = 'T1' | 'T2' | 'T3' | 'CUP' | 'EURO' | 'RESULTS' | 'ABROAD';
 
 /** 3-tier tables, Domestic Cup, 16-team European Cup bracket, results. */
 export default function LeagueTableCRT() {
-  const g = useGame();
+  const real = useGame();
+  const live = useGameStore((s) => s.liveScore);
+  // while your match is on, the table shows only what you have seen
+  const g = withLiveTables(real, live);
+  const hidden = hasPendingMatches(real);
   const me = g.manager.clubId as string;
   const myTier = g.clubs[me].tier;
   const [tab, setTab] = useState<Tab>(`T${myTier}` as Tab);
@@ -24,9 +30,10 @@ export default function LeagueTableCRT() {
       </div>
       <div className="max-h-[560px] overflow-y-auto crt-scroll">
         {(tab === 'T1' || tab === 'T2' || tab === 'T3') && <LeagueTable g={g} leagueId={`${a}-${tab[1]}`} me={me} zones />}
-        {tab === 'CUP' && <CupView g={g} me={me} />}
-        {tab === 'EURO' && <EuroView g={g} me={me} />}
-        {tab === 'RESULTS' && <Results g={g} me={me} />}
+        {hidden && (tab === 'CUP' || tab === 'EURO' || tab === 'RESULTS') && <div className="t-dim">This week's results come in after the final whistle.</div>}
+        {!hidden && tab === 'CUP' && <CupView g={g} me={me} />}
+        {!hidden && tab === 'EURO' && <EuroView g={g} me={me} />}
+        {!hidden && tab === 'RESULTS' && <Results g={g} me={me} />}
         {tab === 'ABROAD' && (
           <div className="space-y-4">
             <div className="t-dim">Shadow leagues resolve in a single pass at season end. Last completed tables:</div>
