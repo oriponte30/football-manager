@@ -64,6 +64,8 @@ export interface ScoutReport {
   verdict: string;
   /** clarity 0..1 drives fax rendering (messy vs crisp) */
   clarity: number;
+  /** plain-language notes (strengths, fitness, mood, outlook); older saves lack it */
+  notes?: string[];
 }
 
 export interface JobOffer {

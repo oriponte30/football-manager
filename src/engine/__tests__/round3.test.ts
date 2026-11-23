@@ -8,6 +8,7 @@ import { staffInterest, staffCeiling, generateStaff } from '../staffGenerator';
 import { counterIncomingBid } from '../transferEngine';
 import { startDayAfter, beginPrep, runDrill, recoverySession, markWatched, repeatDrillPlan, weekSessions } from '../weekEngine';
 import { refreshShortlist, setScoutBrief, briefOptionsFor } from '../shortlistEngine';
+import { generateScoutReport, unscoutedOvrRange } from '../scoutingEngine';
 import type { GameState } from '../../types/world';
 
 function careerAt(seed: number, offer = 0): GameState {
@@ -162,5 +163,18 @@ describe('the manager\'s week', () => {
       expect(p.position).toBe('CB');
       expect(g.clubs[p.clubId!].country).toBe('ITA');
     }
+  });
+
+  it('even a 1-star scout tells you a lot', () => {
+    const g = careerAt(91);
+    const p = Object.values(g.players).find((x) => x.clubId && x.clubId !== g.manager.clubId && x.traits.length > 0)!;
+    const r = generateScoutReport(g, p, null);
+    expect(r.ovrRange[1] - r.ovrRange[0]).toBeLessThanOrEqual(12);
+    for (const v of Object.values(r.statRanges)) expect(v![1] - v![0]).toBeLessThanOrEqual(12);
+    expect(r.paRange[1] - r.paRange[0]).toBeLessThanOrEqual(12);
+    expect(r.revealedTraits.length).toBeGreaterThanOrEqual(1);
+    expect(r.notes!.length).toBeGreaterThanOrEqual(4);
+    const fog = unscoutedOvrRange(p);
+    expect(fog[1] - fog[0]).toBeGreaterThan(r.ovrRange[1] - r.ovrRange[0]);
   });
 });

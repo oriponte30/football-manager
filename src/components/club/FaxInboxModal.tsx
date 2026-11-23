@@ -84,9 +84,11 @@ function FaxSheet({ f }: { f: FaxMessage }) {
       {report && (
         <div className="mt-3 font-mono text-sm grid grid-cols-2 gap-x-6">
           {Object.entries(report.statRanges).map(([k, r]) => (
-            <div key={k} className="fax-line flex justify-between"><span className="uppercase">{k}</span><span>{r![0]}–{r![1]}{r![1] - r![0] > 12 ? '?' : ''}</span></div>
+            <div key={k} className="fax-line flex justify-between"><span className="uppercase">{k}</span><span>{r![0]}–{r![1]}{r![1] - r![0] > 9 ? '?' : ''}</span></div>
           ))}
+          <div className="fax-line col-span-2 mt-1 flex justify-between"><span>ABILITY {report.ovrRange[0]}–{report.ovrRange[1]}</span><span>POTENTIAL {report.paRange[0]}–{report.paRange[1]}</span></div>
           <div className="fax-line col-span-2 mt-1">TRAITS: {report.revealedTraits.join(', ') || '—'}{report.hiddenTraitCount > 0 ? ` (+${report.hiddenTraitCount} unknown)` : ''}</div>
+          {report.notes?.map((n) => <div key={n} className="fax-line col-span-2">· {n}</div>)}
           <div className="col-span-2 mt-2"><span className={`stamp ${report.staffStars >= 4 ? 'stamp-green' : report.staffStars >= 2.5 ? 'stamp-blue' : 'stamp-red'}`}>{report.staffStars >= 4 ? 'VERIFIED' : report.staffStars >= 2.5 ? 'PROBABLE' : 'UNCERTAIN'}</span></div>
         </div>
       )}

@@ -7,7 +7,7 @@ import { OUTFIELD_STATS, GK_STATS, MORALE_LABELS, type IndividualTrainingFocus, 
 import { avgRating, fullName, moraleLevel } from '../../engine/ratings';
 import { valuePlayer, demandedWage, renewalDemand, windowOpen, signingBonus } from '../../engine/transferEngine';
 import { fmtMoney } from '../../engine/financeEngine';
-import { statRange } from '../../engine/scoutingEngine';
+import { fogStatRange } from '../../engine/scoutingEngine';
 
 const LABEL: Record<StatKey, string> = {
   shooting: 'Shooting', passing: 'Passing', dribbling: 'Dribbling', defending: 'Defending', pace: 'Pace', physical: 'Physical',
@@ -71,13 +71,18 @@ export default function PlayerDossierModal({ playerId, onClose }: { playerId: st
               {keys.map((k) => {
                 if (known) return <StatBar key={k} label={LABEL[k]} value={p.stats[k]} />;
                 if (report?.statRanges[k]) return <StatBar key={k} label={LABEL[k]} range={report.statRanges[k]} />;
-                return <StatBar key={k} label={LABEL[k]} range={statRange(p.stats[k], p.paSeed, `none:${k}`, 1)} />;
+                return <StatBar key={k} label={LABEL[k]} range={fogStatRange(p.stats[k], p.paSeed, `none:${k}`)} />;
               })}
             </div>
             {!known && !report && <div className="handwritten mt-2">No scout report — these are newspaper guesses. Send the scout for a proper read.</div>}
             {report && !known && (
               <div className="mt-2 text-sm">
                 <span className="opacity-70">Report by {report.staffStars}★ scout (wk {report.week}/{report.season}):</span> <span className="handwritten">"{report.verdict}"</span>
+                {report.notes && report.notes.length > 0 && (
+                  <ul className="handwritten mt-1 list-disc pl-5 leading-5">
+                    {report.notes.map((n) => <li key={n}>{n}</li>)}
+                  </ul>
+                )}
               </div>
             )}
           </div>
@@ -102,7 +107,7 @@ export default function PlayerDossierModal({ playerId, onClose }: { playerId: st
               </div>
             </div>
             <div className="paper p-3 text-sm grid grid-cols-2 gap-1">
-              {known && <>
+              {(known || report) && <>
                 <span>Fitness</span><FitnessBar value={p.fitness} injured={p.injuryWeeks} player={p} />
                 <span>Morale</span><span className="flex items-center gap-1"><MoraleIcon value={p.moraleValue} /> {MORALE_LABELS[moraleLevel(p.moraleValue)]}</span>
                 <span>Form</span><span className="flex items-center gap-1"><FormDots p={p} />{p.streak > 0 ? ' Purple patch' : p.streak < 0 ? ' Cold streak' : ''}</span>

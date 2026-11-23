@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CloudButton } from '../account/CloudLayer';
 import { Trophy, Users, ArrowLeftRight, Building2, Save, AlertTriangle, Newspaper, X } from 'lucide-react';
 import { useGameStore, type Screen } from '../../store/useGameStore';
 import { useGame, useUserClub, Modal, ordinal } from '../ui';
@@ -92,6 +93,7 @@ export default function DeskShell() {
             <span title={saveError ? 'Save failed (storage full?)' : 'Autosaved to this browser'} className={`pb-2 ${saveError ? 'text-red-400' : 'text-green-300'}`}>
               {saveError ? <AlertTriangle size={18} /> : <Save size={18} />}
             </span>
+            <CloudButton compact />
           </div>
         </div>
         <nav className="flex gap-1 mt-3 overflow-x-auto items-end">

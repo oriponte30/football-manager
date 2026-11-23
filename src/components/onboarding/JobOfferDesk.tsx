@@ -1,3 +1,4 @@
+import { useCloud } from '../../cloud/sync';
 import { useMemo, useState } from 'react';
 import { Printer, Shuffle, RotateCcw } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
@@ -39,7 +40,11 @@ function CountryPicker() {
           </div>
         </CRTMonitor>
         <div className="paper p-6 rotate-[0.6deg]">
-          <div className="text-xs uppercase tracking-widest opacity-60">Application for Management</div>
+          <div className="flex justify-between items-start">
+            <div className="text-xs uppercase tracking-widest opacity-60">Application for Management</div>
+            <button className="btn btn-sm !h-auto py-1" onClick={() => useCloud.getState().setAccountOpen(true)}>LOG IN / SIGN UP</button>
+          </div>
+          <div className="text-xs opacity-70 mt-1">Already playing on another device? Log in to load your career.</div>
           <label className="block mt-3">
             <span className="text-sm">Manager's name</span>
             <input className="desk-input w-full mt-1" value={name} maxLength={28} placeholder="e.g. Ron Atkins" onChange={(e) => setName(e.target.value)} />
