@@ -139,7 +139,7 @@ function Results({ g, me }: { g: GameState; me: string }) {
   const order = ['EURO', 'CUP', 'LEAGUE', 'PLAYOFF'];
   return (
     <div>
-      <div className="t-white">MATCHWEEK {g.season.matchweek - 1} RESULTS</div>
+      <div className="t-white">MATCHWEEK {Math.max(1, g.season.matchweek - 1)} RESULTS</div>
       {order.map((comp) => {
         const ls = lines.filter((l) => l.competition === comp);
         if (!ls.length) return null;

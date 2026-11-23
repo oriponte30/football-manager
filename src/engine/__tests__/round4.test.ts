@@ -213,6 +213,7 @@ describe('live table', () => {
     const mineId = g.manager.clubId!;
     const lid = g.clubs[mineId].leagueId;
     const snap = (t: Record<string, import('../../types/world').TableRow>) => Object.fromEntries(Object.entries(t).map(([k, r]) => [k, [r.p, r.w, r.d, r.l, r.gf, r.ga, r.pts]]));
+    while (g.season.matchweek < 1) advanceMatchweek(g);
     const before = snap(g.leagues[lid].table);
     advanceMatchweek(g);
     expect(g.phase).toBe('MATCHDAY');

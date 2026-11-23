@@ -16,13 +16,35 @@ const bracketOf = (ca: number): number => (ca < 57 ? 0 : ca < 65 ? 1 : 2);
 /** position groups and the minimum number of free agents in each (at least one per bracket) */
 const GROUPS: { positions: Position[]; min: number; perBracket: [number, number, number] }[] = [
   { positions: ['GK'], min: 5, perBracket: [2, 2, 1] },
-  { positions: ['CB'], min: 4, perBracket: [1, 1, 1] },
-  { positions: ['LB', 'RB'], min: 4, perBracket: [1, 1, 1] },
-  { positions: ['CDM', 'CM'], min: 4, perBracket: [1, 1, 1] },
-  { positions: ['CAM'], min: 3, perBracket: [1, 1, 1] },
-  { positions: ['LW', 'RW'], min: 4, perBracket: [1, 1, 1] },
+  { positions: ['CB'], min: 5, perBracket: [1, 1, 2] },
+  { positions: ['LB', 'RB'], min: 5, perBracket: [1, 1, 2] },
+  { positions: ['CDM', 'CM'], min: 5, perBracket: [1, 1, 2] },
+  { positions: ['CAM'], min: 4, perBracket: [1, 1, 1] },
+  { positions: ['LW', 'RW'], min: 5, perBracket: [1, 1, 2] },
   { positions: ['ST'], min: 4, perBracket: [1, 1, 1] },
 ];
+/** largest the pool may grow per group, so no position floods the front page */
+const GROUP_CAP = [9, 10, 10, 12, 7, 10, 7];
+
+/** A position for a filler free agent: whichever group is furthest below its share. */
+export function freeAgentPosition(g: GameState, rng: Rng): Position {
+  const pool = g.freeAgentIds.map((id) => g.players[id]).filter(Boolean);
+  let best = 0; let bestRatio = Infinity;
+  GROUPS.forEach((grp, i) => {
+    const r = pool.filter((p) => grp.positions.includes(p.position)).length / GROUP_CAP[i];
+    if (r < bestRatio) { bestRatio = r; best = i; }
+  });
+  return rng.pick(GROUPS[best].positions);
+}
+
+/** Trim over-full position groups (weakest, oldest first). */
+export function balanceFreeAgents(g: GameState): void {
+  GROUPS.forEach((grp, i) => {
+    const have = g.freeAgentIds.map((id) => g.players[id]).filter((p) => p && grp.positions.includes(p.position)).sort((a, b) => (b.ca - b.age) - (a.ca - a.age));
+    for (const p of have.slice(GROUP_CAP[i])) { delete g.players[p.id]; delete g.scoutReports[p.id]; }
+  });
+  g.freeAgentIds = g.freeAgentIds.filter((id) => g.players[id]);
+}
 
 export function ensureFreeAgentCoverage(g: GameState, rng: Rng, country: CountryCode): void {
   const pool = () => g.freeAgentIds.map((id) => g.players[id]).filter(Boolean);

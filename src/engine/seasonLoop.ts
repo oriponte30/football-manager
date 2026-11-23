@@ -30,7 +30,7 @@ import { evolveStaff, generateStaff, generateStaffMarket, staffStarsOf } from '.
 import { fullName, starsFromInternal } from './ratings';
 import { generatePlayer, SQUAD_TEMPLATE, emptySeasonStats, wageFor } from './playerGenerator';
 import { rollNationality } from '../data/nationalities';
-import { ensureFreeAgentCoverage } from './freeAgentPool';
+import { ensureFreeAgentCoverage, freeAgentPosition, balanceFreeAgents } from './freeAgentPool';
 import { applyInjury, isKeyPlayer, rollInjury, tickRecovery, trainingInjuries } from './injuryEngine';
 import {
   newsClub, newsCupWinner, newsEuroWinner, newsGiantKilling, newsInjury, newsLeagueChampion, newsManager,
@@ -39,6 +39,8 @@ import {
 import { boardGoalFor, emptyLedger, initialEuroEntrants } from './worldGenerator';
 
 export const SEASON_WEEKS = 30;
+/** pre-season runs matchweeks -2, -1, 0: no fixtures, transfer window already open */
+export const PRE_SEASON_START = -2;
 export const CUP_WEEKS = [3, 7, 12, 17, 22, 27];
 export const CUP_ROUND_NAMES = ['Round 1', 'Round 2', 'Round of 16', 'Quarter-Final', 'Semi-Final', 'Final'];
 export const EURO_GROUP_WEEKS = [4, 6, 8, 10, 12, 14];
@@ -116,7 +118,7 @@ export function setupSeason(g: GameState, rng: Rng, euroEntrants: string[]): voi
     groups, groupFixtures, quarterFinals: [], semiFinals: [], final: null, stage: 'GROUPS', championId: null,
     defendingChampionId: g.euro.championId ?? g.euro.defendingChampionId ?? null,
   };
-  g.season.matchweek = 1;
+  g.season.matchweek = PRE_SEASON_START; // three pre-season weeks (-2, -1, 0), then matchweek 1
   g.season.window = 'SUMMER';
   g.aiTradeFaxesThisSeason = 0;
   for (const p of Object.values(g.players)) p.season = emptySeasonStats();
@@ -483,7 +485,8 @@ export function advanceMatchweek(g: GameState): void {
   const wc: WeekCtx = { rng, strength: {}, weekStats: {}, clubResults: {}, lines: [], userResults: [] };
 
   // midweek: European Cup and domestic cup
-  playEuro(g, wc, mw);
+  const pre = mw < 1;
+  if (!pre) playEuro(g, wc, mw);
   const cupIdx = CUP_WEEKS.indexOf(mw);
   if (cupIdx >= 0) {
     drawCupRound(g, rng, cupIdx);
@@ -517,8 +520,10 @@ export function advanceMatchweek(g: GameState): void {
     }
     const lg = g.leagues[club.leagueId];
     const pos = sortedTable(lg.table).findIndex((r) => r.clubId === club.id) + 1;
-    weeklyProgressionForClub(g, rng, club, wc.weekStats, pos <= 8);
-    updateMoraleAfterWeek(g, club, wc.clubResults[club.id] ?? [], wc.weekStats);
+    if (!pre) {
+      weeklyProgressionForClub(g, rng, club, wc.weekStats, pos <= 8);
+      updateMoraleAfterWeek(g, club, wc.clubResults[club.id] ?? [], wc.weekStats);
+    }
     const physio = staffStarsOf(g, club.id, 'PHYSIO');
     const extra = club.tactics.trainingFocus === 'PHYSICAL' ? 3 : 0;
     for (const id of club.playerIds) {
@@ -541,7 +546,7 @@ export function advanceMatchweek(g: GameState): void {
 
   if (userId) {
     const userClub = g.clubs[userId];
-    weeklyBoard(g, userClub);
+    if (!pre) weeklyBoard(g, userClub);
     // transfers
     for (const b of g.bids) {
       if (b.direction === 'OUTGOING' && b.status === 'PENDING' && b.resolveWeek <= mw && b.season === g.season.year) resolveOutgoingBid(g, rng, b);
@@ -571,7 +576,7 @@ export function advanceMatchweek(g: GameState): void {
     // youth intake
     if (INTAKE_WEEKS.includes(mw)) youthIntake(g, rng, userClub, true);
     // dressing room dilemma
-    const d = maybeCreateDilemma(g, rng, userClub);
+    const d = pre ? null : maybeCreateDilemma(g, rng, userClub);
     if (d) {
       g.dilemma = d;
       fax(g, { kind: 'DILEMMA', from: 'Dressing Room', title: `DILEMMA: ${d.title}`, body: d.text, resolved: false });
@@ -596,7 +601,8 @@ export function advanceMatchweek(g: GameState): void {
   g.season.matchweek = mw + 1;
   g.season.window = windowFor(g.season.matchweek);
   if (g.season.matchweek > SEASON_WEEKS) finalizeSeason(g, rng);
-  afterMatchweek(g, rng);
+  if (pre) { g.phase = 'PREP'; g.dayAfter = { recovery: null, pressDone: false }; g.pressConference = null; }
+  else afterMatchweek(g, rng);
   g.rngState = rng.state;
 }
 
@@ -798,7 +804,8 @@ export function startNextSeason(g: GameState): void {
       continue;
     }
     if (club) {
-      p.contract.yearsLeft -= 1;
+      if (p.contract.fresh) delete p.contract.fresh; // signed mid-season: this rollover doesn't use up a year
+      else p.contract.yearsLeft -= 1;
       if (p.contract.yearsLeft <= 0) {
         if (club.id === userId) {
           departures.push(`${fullName(p)} leaves on a free (contract expired).`);
@@ -817,8 +824,8 @@ export function startNextSeason(g: GameState): void {
   if (userId && departures.length) {
     fax(g, { kind: 'NEWS', from: 'Club Secretary', title: 'SUMMER DEPARTURES', body: departures.join('\n'), resolved: true });
   }
-  for (const id of g.pendingYouth) delete g.players[id];
-  g.pendingYouth = [];
+  // an unreviewed youth intake stays in the folder across the rollover
+  g.pendingYouth = g.pendingYouth.filter((id) => g.players[id]);
 
   // AI clubs: youth regens + squad maintenance
   for (const club of Object.values(g.clubs)) {
@@ -842,13 +849,14 @@ export function startNextSeason(g: GameState): void {
   }
   // free agent pool upkeep
   g.freeAgentIds = g.freeAgentIds.filter((id) => g.players[id]);
+  balanceFreeAgents(g);
   if (g.freeAgentIds.length > 90) {
     const sorted = g.freeAgentIds.map((id) => g.players[id]).sort((x, y) => (y.ca - y.age) - (x.ca - x.age));
     for (const p of sorted.slice(90)) { delete g.players[p.id]; delete g.scoutReports[p.id]; }
     g.freeAgentIds = sorted.slice(0, 90).map((p) => p.id);
   }
   while (g.freeAgentIds.length < 50) {
-    const p = generatePlayer(g, rng, { nationality: rollNationality(rng, a, 'FREE_AGENT'), country: a, position: rng.pick(SQUAD_TEMPLATE), age: rng.int(19, 32), targetOvr: rng.range(46, 64), clubId: null, tier: 3 });
+    const p = generatePlayer(g, rng, { nationality: rollNationality(rng, a, 'FREE_AGENT'), country: a, position: freeAgentPosition(g, rng), age: rng.int(19, 32), targetOvr: rng.range(46, 64), clubId: null, tier: 3 });
     p.contract.yearsLeft = 0;
     g.players[p.id] = p;
     g.freeAgentIds.push(p.id);

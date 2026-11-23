@@ -175,7 +175,7 @@ function Career({ title, s, at }: { title: string; s: SaveSummary; at: number })
     <div className="border-2 border-[#6e6550] bg-[#fffbe9] rounded p-3">
       <div className="text-xs uppercase tracking-widest opacity-60">{title}</div>
       <div className="font-bold text-lg">{s.club}</div>
-      <div className="text-sm">{s.manager} · season {s.season} · MW {Math.min(30, s.matchweek)}</div>
+      <div className="text-sm">{s.manager} · season {s.season} · {s.matchweek < 1 ? 'pre-season' : `MW ${Math.min(30, s.matchweek)}`}</div>
       <div className="text-xs opacity-70">last played {ago(at)}</div>
     </div>
   );

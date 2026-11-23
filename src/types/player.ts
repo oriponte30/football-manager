@@ -54,6 +54,8 @@ export interface Contract {
   wage: number;
   yearsLeft: number;
   releaseClause: number | null;
+  /** signed after the summer window: the first rollover doesn't count against the term */
+  fresh?: boolean;
 }
 
 export interface SeasonPlayerStats {

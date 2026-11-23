@@ -4,7 +4,7 @@
  */
 import type { GameState } from '../types/world';
 import type { Club } from '../types/club';
-import type { Player } from '../types/player';
+import type { Contract, Player } from '../types/player';
 import type { TransferBid, FaxMessage, TradeProposal } from '../types/transfers';
 import { POSITION_GROUP } from '../data/formations';
 import { COUNTRIES } from '../data/countries';
@@ -97,6 +97,10 @@ export function windowFor(mw: number): 'SUMMER' | 'WINTER' | 'CLOSED' {
 }
 
 export const SUMMER_WINDOW_END = 5;
+/** Deals signed after the summer window keep their full term: the next rollover doesn't use up a year. */
+function stampFresh(g: GameState, c: Contract): void {
+  if (g.season.matchweek > SUMMER_WINDOW_END) c.fresh = true; else delete c.fresh;
+}
 export const WINTER_WINDOW_START = 16;
 export const WINTER_WINDOW_END = 19;
 
@@ -338,6 +342,7 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
   }
   movePlayer(g, p, buyer.id);
   p.contract = { wage: bid.wage, yearsLeft: bid.years, releaseClause: null };
+  stampFresh(g, p.contract);
   p.moraleValue = clamp(p.moraleValue + 15, 0, 100);
   bid.status = 'COMPLETED';
   if (bid.fee >= valuePlayer(p) * 0.6 && p.ca >= avgCa(g, buyer) + 4) buyer.fanInterest = clamp(buyer.fanInterest + 4, 0, 100);
@@ -412,6 +417,7 @@ export function signFreeAgent(g: GameState, clubId: string, playerId: string, wa
   if (club.finances.bank < bonus) return { ok: false, message: `His agent wants a ${fmtMoney(bonus)} signing bonus. You can't cover it.` };
   movePlayer(g, p, clubId);
   p.contract = { wage, yearsLeft: years, releaseClause: null };
+  stampFresh(g, p.contract);
   club.finances.bank -= bonus;
   club.finances.ledger.transfers += bonus;
   return { ok: true, message: `${fullName(p)} signs on a free (${fmtMoney(wage)}/wk, ${years} yr, ${fmtMoney(bonus)} signing bonus).` };
@@ -566,6 +572,7 @@ export function renewContract(g: GameState, playerId: string, wage: number, year
   if (!cap.ok) return { ok: false, message: cap.message };
   p.contract.wage = Math.round(wage);
   p.contract.yearsLeft = years;
+  stampFresh(g, p.contract);
   p.moraleValue = clamp(p.moraleValue + 8, 0, 100);
   return { ok: true, message: `${fullName(p)} commits his future: ${years} yr at ${fmtMoney(wage)}/wk.` };
 }
@@ -589,14 +596,19 @@ export function releasePlayer(g: GameState, playerId: string): { ok: boolean; me
 export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void {
   if (!windowOpen(g)) return;
   processLoanList(g, rng, userClubId);
-  if (g.bids.some((b) => b.direction === 'INCOMING' && b.status === 'PENDING')) return;
+  if (g.bids.filter((b) => b.direction === 'INCOMING' && b.status === 'PENDING').length >= 2) return;
   if (listedTransferBid(g, rng, userClubId)) return;
-  if (g.season.matchweek <= 1 || !rng.chance(0.38)) return;
+  if (!rng.chance(0.5)) return;
   const user = g.clubs[userClubId];
   const squad = user.playerIds.map((id) => g.players[id]).filter((p) => p && !p.loanFromClubId);
   if (squad.length < 18) return;
-  const target = rng.weighted(squad, squad.map((p) => Math.pow(Math.max(1, valuePlayer(p) / 1e5), 1.2) * (p.age <= 23 ? 1.5 : 1)));
-  if (g.bids.some((b) => b.playerId === target.id && b.status === 'PENDING')) return;
+  // clubs only come for players worth having: good for the level, in form, or genuine prospects. Never deadwood.
+  const avg = avgCa(g, user);
+  const prospect = (p: Player) => p.age <= 23 && p.truePA >= p.ca + 10;
+  const wanted = squad.filter((p) => p.age <= 31 && !(p.age >= 30 && p.ca < avg + 3)
+    && (p.ca >= avg + 1 || (p.form >= 2 && p.ca >= avg - 3) || prospect(p)) && !g.bids.some((b) => b.playerId === p.id && b.status === 'PENDING'));
+  if (wanted.length === 0) return;
+  const target = rng.weighted(wanted, wanted.map((p) => Math.pow(Math.max(1, valuePlayer(p) / 1e5), 1.1) * (1 + Math.max(0, p.form) / 6) * (prospect(p) ? 1.6 : 1)));
   const sameTierOk = rng.chance(0.5); // peers of about your size make offers too, not just bigger clubs
   const buyers = Object.values(g.clubs).filter((c) => !c.isShadow && c.id !== userClubId
     && (c.tier < user.tier || c.reputation > user.reputation + 8 || (sameTierOk && c.tier === user.tier && c.reputation >= user.reputation - 2))
@@ -605,8 +617,8 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
   const buyer = rng.pick(buyers);
   const base = valuePlayer(target) * (isForeignSale(user, buyer) ? COUNTRIES[user.country].foreignFeeMult : 1);
   // clubs open low and keep a private ceiling — richer, bigger clubs stretch further
-  let fee = Math.round(base * rng.range(0.72, 1.05) / 5000) * 5000;
-  const reach = 1.1 + Math.min(0.45, (buyer.reputation - user.reputation) / 120) + rng.range(0, 0.25);
+  let fee = Math.round(base * rng.range(0.85, 1.1) / 5000) * 5000;
+  const reach = 1.12 + Math.min(0.2, (buyer.reputation - user.reputation) / 150) + rng.range(0, 0.12);
   const walkAway = Math.min(buyer.finances.bank * 0.6, Math.round(base * reach / 5000) * 5000);
   const clause = target.contract.releaseClause;
   if (clause !== null && rng.chance(0.22) && buyer.finances.bank > clause) fee = clause;
@@ -690,6 +702,7 @@ export function answerIncomingBid(g: GameState, bidId: string, accept: boolean):
   if (p.fanFavorite) seller.fanInterest = clamp(seller.fanInterest - 6, 0, 100);
   movePlayer(g, p, buyer.id);
   p.contract = { wage: bid.wage, yearsLeft: bid.years, releaseClause: null };
+  stampFresh(g, p.contract);
   bid.status = 'COMPLETED';
   if (bid.type === 'TRANSFER') newsTransfer(g, null, p, seller, buyer, bid.fee);
   return { ok: true, message: `${fullName(p)} sold to ${buyer.name} for ${fmtMoney(bid.fee)}.` };

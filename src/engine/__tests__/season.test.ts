@@ -16,7 +16,7 @@ describe('season loop', () => {
     mine.board.value = 100;
     mine.board.patience = 0.05;
     const times: number[] = [];
-    for (let w = 0; w < SEASON_WEEKS; w++) {
+    for (let w = 0; w < SEASON_WEEKS + 3; w++) { // 3 pre-season weeks first
       advanceMatchweek(g);
       times.push(g.lastSimMs);
       if (g.status === 'SACKED') break;
@@ -47,11 +47,11 @@ describe('season loop', () => {
     const year = g.season.year;
     startNextSeason(g);
     expect(g.season.year).toBe(year + 1);
-    expect(g.season.matchweek).toBe(1);
+    expect(g.season.matchweek).toBe(-2);
     expect(g.status).toBe('PLAYING');
     for (const id of ['ITA-1', 'ITA-2', 'ITA-3']) expect(g.leagues[id].clubIds).toHaveLength(16);
     expect(g.euro.groups.flatMap((x) => x.clubIds)).toHaveLength(16);
     advanceMatchweek(g);
-    expect(g.season.matchweek).toBe(2);
+    expect(g.season.matchweek).toBe(-1);
   }, 60_000);
 });

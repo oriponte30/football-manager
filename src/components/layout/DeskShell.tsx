@@ -77,7 +77,7 @@ export default function DeskShell() {
               <div>
                 <div className="nameplate-club">{club.name}</div>
                 <div className="nameplate-sub">
-                  {g.manager.name} · {g.leagues[club.leagueId].name} · {g.leagues[club.leagueId].table[club.id]?.p ? ordinal(pos) : 'Pre-season'} · {g.season.matchweek > 30 ? 'Season over' : `MW ${g.season.matchweek}/30`}
+                  {g.manager.name} · {g.leagues[club.leagueId].name} · {g.leagues[club.leagueId].table[club.id]?.p ? ordinal(pos) : 'Pre-season'} · {g.season.matchweek > 30 ? 'Season over' : g.season.matchweek < 1 ? `Pre-season ${g.season.matchweek + 3}/3` : `MW ${g.season.matchweek}/30`}
                   {g.season.window !== 'CLOSED' && <span className="ml-2 window-open">{g.season.window} WINDOW OPEN</span>}
                 </div>
               </div>

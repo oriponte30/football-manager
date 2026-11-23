@@ -41,20 +41,23 @@ function Prep() {
   const { playMatchweek, quickSim, simming } = useGameStore();
   const fixtures = userFixturesThisWeek(g);
   const canPlay = g.status === 'PLAYING' && g.season.matchweek <= 30;
+  const preSeason = g.season.matchweek < 1;
+  const preWeek = g.season.matchweek + 3; // 1..3
   return (
     <>
-      <CRTMonitor title={`MATCHWEEK ${Math.min(30, g.season.matchweek)} — THE WEEK AHEAD`} page="301" right={<span>{fmtDay(g, g.season.matchweek)}</span>}>
-        {fixtures.length === 0 && <div className="t-dim">No fixtures. {g.season.matchweek > 30 ? 'The season is complete.' : ''}</div>}
+      <CRTMonitor title={preSeason ? `PRE-SEASON WEEK ${preWeek} OF 3 — NO FIXTURES` : `MATCHWEEK ${Math.min(30, g.season.matchweek)} — THE WEEK AHEAD`} page="301" right={<span>{preSeason ? 'Summer' : fmtDay(g, g.season.matchweek)}</span>}>
+        {preSeason && <div className="t-dim">No matches yet. The transfer window is open: scout, sign, sell and set up the squad before matchweek 1.</div>}
+        {!preSeason && fixtures.length === 0 && <div className="t-dim">No fixtures. {g.season.matchweek > 30 ? 'The season is complete.' : ''}</div>}
         <div className="space-y-3">
           {fixtures.map((f) => <OpponentPreview key={f.id} g={g} f={f} />)}
         </div>
         <div className="mt-4 flex flex-wrap gap-3 items-center">
           <button disabled={!canPlay || simming} className="btn btn-green text-3xl px-6 py-1 flex items-center gap-2" onClick={playMatchweek}>
-            <Play size={24} fill="currentColor" /> KICK OFF
+            <Play size={24} fill="currentColor" /> {preSeason ? 'ADVANCE WEEK' : 'KICK OFF'}
           </button>
-          <button disabled={!canPlay || simming} className="btn btn-sm flex items-center gap-1" onClick={() => quickSim(5)} title="Simulate the next 5 matchweeks without watching. Stops if something urgent lands on the fax.">
+          {!preSeason && <button disabled={!canPlay || simming} className="btn btn-sm flex items-center gap-1" onClick={() => quickSim(5)} title="Simulate the next 5 matchweeks without watching. Stops if something urgent lands on the fax.">
             <FastForward size={16} /> {simming ? 'SIMULATING…' : 'QUICK SIM ×5'}
-          </button>
+          </button>}
         </div>
         <div className="mt-2 t-dim text-base">
           {club.name}: {ordinal(leaguePosition(g, club.id))} in {g.leagues[club.leagueId].name} · Board goal: {club.board.goal.label} · {userInCup(g) ? `Still in the ${g.cup.name}` : `Out of the ${g.cup.name}`}

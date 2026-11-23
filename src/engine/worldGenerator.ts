@@ -18,7 +18,7 @@ import { rollNationality } from '../data/nationalities';
 import { createRng, clamp, type Rng } from './rng';
 import { nextId } from './ids';
 import { generatePlayer, SQUAD_TEMPLATE } from './playerGenerator';
-import { ensureFreeAgentCoverage } from './freeAgentPool';
+import { ensureFreeAgentCoverage, freeAgentPosition } from './freeAgentPool';
 import { generateStaff, generateStaffMarket } from './staffGenerator';
 import { fillLineup, preferredRoles, squadStrength } from './lineup';
 import { valuePlayer } from './transferEngine';
@@ -312,7 +312,7 @@ export function generateWorld(managerName: string, country: CountryCode, seed: n
 
   // free agents
   for (let i = 0; i < 60; i++) {
-    const pos = rng.pick(SQUAD_TEMPLATE);
+    const pos = freeAgentPosition(g, rng);
     const age = rng.chance(0.3) ? rng.int(31, 35) : rng.int(19, 30);
     const p = generatePlayer(g, rng, { nationality: rollNationality(rng, country, 'FREE_AGENT'), country, position: pos, age, targetOvr: rng.range(46, 66), clubId: null, tier: 3 });
     p.contract.yearsLeft = 0;

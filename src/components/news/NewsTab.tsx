@@ -57,7 +57,7 @@ export default function NewsTab() {
   const [filter, setFilter] = useState<'ALL' | 'MINE'>('ALL');
   const country = g.activeCountry;
   const mh = MASTHEAD[country];
-  const mw = Math.min(30, g.season.matchweek);
+  const mw = Math.max(1, Math.min(30, g.season.matchweek));
   const issueNo = (g.season.year - 1994) * 30 + mw;
 
   const items = useMemo(() => (filter === 'MINE' ? g.news.filter((n) => n.myClub) : g.news), [g.news, filter]);

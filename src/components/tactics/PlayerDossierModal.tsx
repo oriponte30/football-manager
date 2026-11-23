@@ -205,7 +205,7 @@ function BidDesk({ playerId, scouting, hasReport }: { playerId: string; scouting
         <div className="text-xs opacity-70 mt-1">Report arrives by fax in {scoutStars >= 3 ? '1 week' : '2 weeks'}.</div>
       </div>
       <div className="paper p-3">
-        <div className="font-bold flex items-center gap-1"><Send size={16} /> Step 2 · Fax a bid {!open && <span className="text-red-700 text-sm ml-2">(window closed — opens MW 16–19 / summer MW 1–5)</span>}</div>
+        <div className="font-bold flex items-center gap-1"><Send size={16} /> Step 2 · Fax a bid {!open && <span className="text-red-700 text-sm ml-2">(window closed — opens MW 16–19 / summer: pre-season to MW 5)</span>}</div>
         <div className="flex flex-wrap gap-3 items-center mt-2 text-sm">
           <div className="seg"><button className={type === 'TRANSFER' ? 'on' : ''} onClick={() => setType('TRANSFER')}>TRANSFER</button><button className={type === 'LOAN' ? 'on' : ''} onClick={() => setType('LOAN')}>LOAN</button></div>
           {type === 'TRANSFER' ? (

@@ -85,6 +85,7 @@ describe('incoming bids', () => {
 describe('the manager\'s week', () => {
   it('matchday → day after → prep, one drill a week, one recovery a day', () => {
     const g = careerAt(51);
+    while (g.season.matchweek < 1) advanceMatchweek(g);
     advanceMatchweek(g);
     expect(g.lastUserResults.length).toBeGreaterThan(0);
     expect(g.phase).toBe('MATCHDAY');

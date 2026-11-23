@@ -12,7 +12,7 @@ import { staffStarsOf } from './staffGenerator';
 import { fax, movePlayer, loanOutPlayer } from './transferEngine';
 import { fullName } from './ratings';
 
-export const INTAKE_WEEKS = [10, 20, 30];
+export const INTAKE_WEEKS = [9, 18, 27];
 const YOUTH_POS: Position[] = ['GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CM', 'CAM', 'LW', 'RW', 'ST', 'ST'];
 
 export function superstarChance(ydStars: number, scoutStars: number, academyLevel: number): number {
