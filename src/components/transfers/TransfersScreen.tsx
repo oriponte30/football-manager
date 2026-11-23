@@ -1,0 +1,146 @@
+import { useMemo, useState } from 'react';
+import { Search, Binoculars } from 'lucide-react';
+import { useGameStore } from '../../store/useGameStore';
+import { useGame, useUserClub, PosTag, ovrRead, paRead, Stars, staffStars } from '../ui';
+import CRTMonitor from '../layout/CRTMonitor';
+import YouthIntakeFolder from './YouthIntakeFolder';
+import { marketList } from '../../engine/transferEngine';
+import { fmtMoney } from '../../engine/financeEngine';
+import { fullName } from '../../engine/ratings';
+
+type Tab = 'TRANSFER' | 'FREE' | 'LOAN' | 'BIDS' | 'SCOUTING' | 'YOUTH';
+const POS = ['ALL', 'GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST'];
+
+export default function TransfersScreen() {
+  const g = useGame();
+  const club = useUserClub();
+  const [tab, setTab] = useState<Tab>(g.pendingYouth.length ? 'YOUTH' : 'TRANSFER');
+  const tabs: [Tab, string][] = [['TRANSFER', 'Transfer market'], ['FREE', `Free agents (${g.freeAgentIds.length})`], ['LOAN', 'Loans'], ['BIDS', 'Faxed bids'], ['SCOUTING', `Scouting (${g.scouting.length})`], ['YOUTH', `Youth intake (${g.pendingYouth.length})`]];
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 items-center">
+        {tabs.map(([t, l]) => <button key={t} className={`btn btn-sm ${tab === t ? 'btn-amber' : ''}`} onClick={() => setTab(t)}>{l}</button>)}
+        <span className="ml-auto font-mono text-lg text-[#e8cf8f]">
+          WINDOW: <span className={g.season.window === 'CLOSED' ? 'text-red-300' : 'text-green-300'}>{g.season.window}</span> · BANK {fmtMoney(club.finances.bank)} · SCOUT <Stars value={staffStars(g, club, 'CHIEF_SCOUT')} size={12} />
+        </span>
+      </div>
+      {(tab === 'TRANSFER' || tab === 'FREE' || tab === 'LOAN') && <Market kind={tab} />}
+      {tab === 'BIDS' && <Bids />}
+      {tab === 'SCOUTING' && <Scouting />}
+      {tab === 'YOUTH' && <YouthIntakeFolder />}
+    </div>
+  );
+}
+
+function Market({ kind }: { kind: 'TRANSFER' | 'FREE' | 'LOAN' }) {
+  const g = useGame();
+  const club = useUserClub();
+  const { openDossier, scout } = useGameStore();
+  const [q, setQ] = useState('');
+  const [pos, setPos] = useState('ALL');
+  const [maxAge, setMaxAge] = useState(40);
+  const [maxVal, setMaxVal] = useState(() => [100000, 250000, 500000, 1000000, 3000000].find((v) => v >= club.finances.bank) ?? 0);
+  const [scope, setScope] = useState<'ALL' | 'HOME' | 'ABROAD'>('ALL');
+  const list = useMemo(() => marketList(g, club.id, kind, q, pos, maxAge), [g, club.id, kind, q, pos, maxAge]);
+  const filtered = list.filter((m) => (maxVal ? m.value <= maxVal : true) && (scope === 'ALL' || !m.player.clubId || (scope === 'HOME' ? g.clubs[m.player.clubId].country === g.activeCountry : g.clubs[m.player.clubId].country !== g.activeCountry)));
+  return (
+    <CRTMonitor title={kind === 'TRANSFER' ? 'TRANSFER MARKET' : kind === 'FREE' ? 'FREE AGENTS — $0 FEE' : 'LOAN LIST — FRINGE & YOUNG PLAYERS'} page={kind === 'TRANSFER' ? '410' : kind === 'FREE' ? '411' : '412'}>
+      <div className="flex flex-wrap gap-2 items-center mb-2 text-lg">
+        <Search size={16} />
+        <input className="bg-transparent border border-amber-crt/50 px-1 w-48 t-white" placeholder="name or club" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="bg-navy-900 border border-amber-crt/50" value={pos} onChange={(e) => setPos(e.target.value)}>{POS.map((p) => <option key={p}>{p}</option>)}</select>
+        <label>MAX AGE <select className="bg-navy-900 border border-amber-crt/50" value={maxAge} onChange={(e) => setMaxAge(Number(e.target.value))}>{[19, 21, 23, 25, 28, 31, 40].map((a) => <option key={a} value={a}>{a === 40 ? 'ANY' : a}</option>)}</select></label>
+        {kind !== 'FREE' && <label>MAX VALUE <select className="bg-navy-900 border border-amber-crt/50" value={maxVal} onChange={(e) => setMaxVal(Number(e.target.value))}>{[0, 100000, 250000, 500000, 1000000, 3000000].map((v) => <option key={v} value={v}>{v ? fmtMoney(v) : 'ANY'}</option>)}</select></label>}
+        {kind !== 'FREE' && <div className="flex">{(['ALL', 'HOME', 'ABROAD'] as const).map((s) => <button key={s} className={`px-2 border border-amber-crt/50 ${scope === s ? 'bg-amber-crt text-navy-900' : ''}`} onClick={() => setScope(s)}>{s}</button>)}</div>}
+      </div>
+      <div className="grid grid-cols-[34px_1fr_1fr_36px_70px_70px_80px_90px] t-dim text-base">
+        <span>POS</span><span>PLAYER</span><span>CLUB</span><span>AGE</span><span>OVR</span><span>POT</span><span>VALUE</span><span />
+      </div>
+      <div className="max-h-[560px] overflow-y-auto crt-scroll">
+        {filtered.map((m) => {
+          const p = m.player;
+          const o = ovrRead(g, p, club.id);
+          const pa = paRead(g, p, club);
+          const scouting = g.scouting.some((s) => s.playerId === p.id);
+          return (
+            <div key={p.id} className="crt-row grid grid-cols-[34px_1fr_1fr_36px_70px_70px_80px_90px] items-center">
+              <span><PosTag pos={p.position} /></span>
+              <button className="text-left truncate t-white hover:underline" onClick={() => openDossier(p.id)}>{fullName(p)}</button>
+              <span className="truncate t-dim">{m.clubName}{p.clubId && g.clubs[p.clubId].country !== g.activeCountry ? ` (${g.clubs[p.clubId].country})` : ''}</span>
+              <span>{p.age}</span>
+              <span className={g.scoutReports[p.id] ? 't-green' : ''}>{o.text}</span>
+              <span>{pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'}</span>
+              <span>{fmtMoney(m.value)}</span>
+              <span className="flex gap-1">
+                <button disabled={scouting} title="Send scout" className="border border-amber-crt/50 px-1 disabled:opacity-40" onClick={() => scout(p.id)}><Binoculars size={14} /></button>
+                <button className="border border-amber-crt/50 px-1" onClick={() => openDossier(p.id)}>{kind === 'FREE' ? 'SIGN' : 'BID'}</button>
+              </span>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && <div className="t-dim">No players match.</div>}
+      </div>
+      <div className="t-dim text-base mt-2">GREEN OVR = scouted (report on file). Unscouted figures are rough press estimates.</div>
+    </CRTMonitor>
+  );
+}
+
+function Bids() {
+  const g = useGame();
+  const { openDossier, setFaxOpen } = useGameStore();
+  const bids = [...g.bids].filter((b) => b.season === g.season.year).reverse();
+  return (
+    <div className="paper p-4">
+      <div className="font-bold mb-2">FAXED BIDS THIS SEASON</div>
+      {bids.length === 0 && <div className="text-sm opacity-70">No bids yet. Find a player in the market, scout him, then fax a bid from his dossier.</div>}
+      <div className="space-y-1">
+        {bids.map((b) => {
+          const p = g.players[b.playerId];
+          const other = b.direction === 'OUTGOING' ? (b.sellerClubId ? g.clubs[b.sellerClubId]?.name : '—') : g.clubs[b.buyerClubId]?.name;
+          const color = b.status === 'ACCEPTED' || b.status === 'COMPLETED' ? 'stamp-green' : b.status === 'REJECTED' || b.status === 'COLLAPSED' ? 'stamp-red' : 'stamp-blue';
+          return (
+            <div key={b.id} className="flex flex-wrap items-center gap-3 border-b border-black/10 py-1 text-sm">
+              <span className="w-20 font-mono">{b.direction === 'OUTGOING' ? 'OUT →' : '← IN'}</span>
+              <button className="underline w-48 text-left truncate" onClick={() => p && openDossier(p.id)}>{p ? fullName(p) : 'Unknown'}</button>
+              <span className="w-48 truncate">{other}</span>
+              <span className="w-32">{b.type === 'LOAN' ? `Loan ${Math.round(b.loanWageShare * 100)}%` : fmtMoney(b.counterFee ?? b.fee)}</span>
+              <span className={`stamp ${color} text-xs`}>{b.status}</span>
+              {(b.status === 'ACCEPTED' || b.status === 'COUNTERED' || (b.direction === 'INCOMING' && b.status === 'PENDING')) && <button className="btn btn-sm" onClick={() => setFaxOpen(true)}>OPEN FAX</button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Scouting() {
+  const g = useGame();
+  const { openDossier } = useGameStore();
+  const reports = Object.values(g.scoutReports).filter((r) => g.players[r.playerId]).sort((a, b) => b.season - a.season || b.week - a.week);
+  return (
+    <div className="grid md:grid-cols-2 gap-4">
+      <div className="paper p-4">
+        <div className="font-bold">ACTIVE SCOUT ASSIGNMENTS</div>
+        {g.scouting.length === 0 && <div className="text-sm opacity-70">None. Use the binoculars in the market.</div>}
+        {g.scouting.map((s) => {
+          const p = g.players[s.playerId];
+          return <div key={s.id} className="text-sm">{p ? fullName(p) : '?'} — report due after MW {s.readyWeek}</div>;
+        })}
+      </div>
+      <div className="paper p-4">
+        <div className="font-bold">REPORTS ON FILE ({reports.length})</div>
+        <div className="max-h-96 overflow-y-auto">
+          {reports.map((r) => {
+            const p = g.players[r.playerId];
+            return (
+              <button key={r.playerId} className="w-full text-left text-sm border-b border-black/10 py-1 hover:bg-yellow-100" onClick={() => openDossier(p.id)}>
+                <PosTag pos={p.position} /> <b>{fullName(p)}</b> ({p.age}) — OVR {r.ovrRange[0]}–{r.ovrRange[1]}, POT {r.paRange[0]}–{r.paRange[1]} <span className="handwritten">{r.verdict}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
