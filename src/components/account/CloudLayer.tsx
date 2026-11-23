@@ -4,8 +4,9 @@ import { Modal } from '../ui';
 import { rememberDevice } from '../../cloud/client';
 import { cloudConfigured } from '../../cloud/config';
 import {
-  useCloud, startCloud, signIn, signUp, signOut, resetPassword, updatePassword, pushNow, reconcile, resolveConflict, type SaveSummary,
+  useCloud, startCloud, signIn, signUp, signOut, resetPassword, updatePassword, pushNow, reconcile, resolveConflict,
 } from '../../cloud/sync';
+import type { SaveSummary } from '../../cloud/pack';
 
 /** Mounted once at the app root: starts sync and hosts the account + conflict pop-ups. */
 export default function CloudLayer() {

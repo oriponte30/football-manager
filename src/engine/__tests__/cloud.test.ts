@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateWorld } from '../worldGenerator';
 import { acceptJob } from '../seasonLoop';
-import { encode, decode, summarize } from '../../cloud/sync';
+import { encode, decode, summarize } from '../../cloud/pack';
 
 describe('cloud save packing', () => {
   it('round-trips a career and shrinks it a lot', async () => {
