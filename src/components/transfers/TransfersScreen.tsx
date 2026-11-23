@@ -8,7 +8,7 @@ import { COUNTRIES } from '../../data/countries';
 import type { CountryCode } from '../../types/world';
 import CRTMonitor from '../layout/CRTMonitor';
 import YouthIntakeFolder from './YouthIntakeFolder';
-import { marketList } from '../../engine/transferEngine';
+import { marketList, windowWeeks } from '../../engine/transferEngine';
 import { fmtMoney } from '../../engine/financeEngine';
 import { fullName } from '../../engine/ratings';
 
@@ -25,7 +25,7 @@ export default function TransfersScreen() {
       <div className="flex flex-wrap gap-2 items-center">
         {tabs.map(([t, l]) => <button key={t} className={`btn btn-sm ${tab === t ? 'btn-amber' : ''}`} onClick={() => setTab(t)}>{l}</button>)}
         <span className="ml-auto font-mono text-lg text-[#e8cf8f]">
-          WINDOW: <span className={g.season.window === 'CLOSED' ? 'text-red-300' : 'text-green-300'}>{g.season.window}</span> · BANK {fmtMoney(club.finances.bank)} · SCOUT <Stars value={staffStars(g, club, 'CHIEF_SCOUT')} size={12} />
+          WINDOW: <span className={g.season.window === 'CLOSED' ? 'text-red-300' : 'text-green-300'}>{g.season.window}</span> <span className="opacity-80">({(() => { const w = windowWeeks(g.season.matchweek); return w.open ? `${w.weeks} week${w.weeks === 1 ? '' : 's'} left in window` : `${w.next === 'WINTER' ? 'winter' : 'summer'} window ${w.weeks > 0 ? `opens in ${w.weeks} wk` : 'next season'}`; })()})</span> · BANK {fmtMoney(club.finances.bank)} · SCOUT <Stars value={staffStars(g, club, 'CHIEF_SCOUT')} size={12} />
         </span>
       </div>
       {tab === 'SHORTLIST' && <Shortlist />}

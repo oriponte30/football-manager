@@ -109,6 +109,8 @@ export interface Player {
   recentRatings: number[];
   /** the manager has put him in the shop window (transfer list / loan list) */
   listed?: { kind: 'TRANSFER' | 'LOAN'; ask: number; season: number; week: number };
+  /** free-agent talks this week with one club (limits repeat offers) */
+  faTry?: { clubId: string; season: number; week: number; n: number };
 }
 
 /** UI-facing range read of a potential, produced by staff. */

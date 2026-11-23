@@ -22,6 +22,7 @@ export function ageCurve(age: number, curve: CareerCurve): number {
       if (age <= 31) return 0.8;
       return 0.25;
     case 'EARLY_PEAKER':
+      if (age <= 19) return 1.9;
       if (age <= 20) return 1.7;
       if (age <= 22) return 0.8;
       return 0.12;
@@ -29,7 +30,8 @@ export function ageCurve(age: number, curve: CareerCurve): number {
     case 'FLOP':
     case 'STANDARD':
     default:
-      if (age <= 21) return 1.3;
+      if (age <= 19) return 1.65;
+      if (age <= 21) return 1.4;
       if (age <= 26) return 0.8;
       if (age <= 30) return 0.35;
       return 0.1;
@@ -89,7 +91,9 @@ export function applyXP(rng: Rng, p: Player, team: TeamTrainingFocus, tagged: bo
 export function headroomFactor(p: Player, coachStars: number, clubWinning: boolean): number {
   const gap = p.truePA - p.ca;
   if (gap <= 0) return 0;
-  let h = clamp(gap / 14, 0.08, 1.4);
+  // a long way below his ceiling, a young player grows fastest (steep early curve), then eases off near the top
+  const cap = p.age <= 22 ? 1.9 : 1.4;
+  let h = clamp(gap / 13, 0.08, cap);
   // Flop: invisible ceiling unless coached by 4–5★ in a winning team
   if (p.careerCurve === 'FLOP' && gap < 14 && !(coachStars >= 4 && clubWinning)) h *= 0.15;
   // Head coach prevents early plateaus
@@ -101,7 +105,8 @@ export function weeklyXP(p: Player, ms: PlayerMatchStats | undefined, coachStars
   const minutes = ms?.minutes ?? 0;
   const minutesFactor = minutes > 0 ? 0.35 + 0.65 * Math.min(1, minutes / 90) : 0.2;
   const ratingFactor = minutes > 0 ? clamp(Math.pow((ms?.rating ?? 6.5) / 6.5, 1.5), 0.5, 1.6) : 0.8;
-  const coachFactor = 0.6 + 0.12 * coachStars;
+  // the head coach matters a lot: a terrible one holds a kid back, a great one is worth ~2x
+  const coachFactor = 0.42 + 0.16 * coachStars;
   const moraleFactor = 0.9 + 0.05 * moraleLevel(p.moraleValue);
   const facility = 0.92 + 0.04 * trainingLevel;
   return 0.95 * ageCurve(p.age, p.careerCurve) * minutesFactor * ratingFactor * headroomFactor(p, coachStars, clubWinning) * coachFactor * moraleFactor * facility;

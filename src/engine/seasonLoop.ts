@@ -30,6 +30,7 @@ import { evolveStaff, generateStaff, generateStaffMarket, staffStarsOf } from '.
 import { fullName, starsFromInternal } from './ratings';
 import { generatePlayer, SQUAD_TEMPLATE, emptySeasonStats, wageFor } from './playerGenerator';
 import { rollNationality } from '../data/nationalities';
+import { ensureFreeAgentCoverage } from './freeAgentPool';
 import { applyInjury, isKeyPlayer, rollInjury, tickRecovery, trainingInjuries } from './injuryEngine';
 import {
   newsClub, newsCupWinner, newsEuroWinner, newsGiantKilling, newsInjury, newsLeagueChampion, newsManager,
@@ -553,6 +554,7 @@ export function advanceMatchweek(g: GameState): void {
     aiIncomingBids(g, rng, userId);
     refreshShortlist(g, rng);
     maybeAiTradeFax(g, rng, userId);
+    ensureFreeAgentCoverage(g, rng, g.activeCountry); // AI clubs soak up free agents all season: keep every position stocked
     // scouting
     const ready = g.scouting.filter((s) => s.readySeason === g.season.year && s.readyWeek <= mw);
     g.scouting = g.scouting.filter((s) => !ready.includes(s));
@@ -851,6 +853,7 @@ export function startNextSeason(g: GameState): void {
     g.players[p.id] = p;
     g.freeAgentIds.push(p.id);
   }
+  ensureFreeAgentCoverage(g, rng, a);
 
   // staff evolution
   for (const club of Object.values(g.clubs)) {

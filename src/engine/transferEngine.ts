@@ -91,9 +91,21 @@ export function windowOpen(g: GameState): boolean {
 }
 
 export function windowFor(mw: number): 'SUMMER' | 'WINTER' | 'CLOSED' {
-  if (mw <= 4) return 'SUMMER';
-  if (mw >= 15 && mw <= 18) return 'WINTER';
+  if (mw <= SUMMER_WINDOW_END) return 'SUMMER';
+  if (mw >= WINTER_WINDOW_START && mw <= WINTER_WINDOW_END) return 'WINTER';
   return 'CLOSED';
+}
+
+export const SUMMER_WINDOW_END = 5;
+export const WINTER_WINDOW_START = 16;
+export const WINTER_WINDOW_END = 19;
+
+/** Matchweeks left in the open window (counting this one), or until the next one opens. */
+export function windowWeeks(mw: number): { open: boolean; weeks: number; next: 'SUMMER' | 'WINTER' | null } {
+  if (mw <= SUMMER_WINDOW_END) return { open: true, weeks: SUMMER_WINDOW_END - mw + 1, next: null };
+  if (mw >= WINTER_WINDOW_START && mw <= WINTER_WINDOW_END) return { open: true, weeks: WINTER_WINDOW_END - mw + 1, next: null };
+  if (mw < WINTER_WINDOW_START) return { open: false, weeks: WINTER_WINDOW_START - mw, next: 'WINTER' };
+  return { open: false, weeks: 0, next: 'SUMMER' };
 }
 
 const URGENT_KINDS: FaxMessage['kind'][] = ['INCOMING_BID', 'TRADE_PROPOSAL', 'TERMINATION', 'JOB_OFFER'];
@@ -340,14 +352,60 @@ export function resolveFaxesFor(g: GameState, bidId: string): void {
 
 /* ------------------------- Free agents ------------------------- */
 
+/**
+ * Free-agent talks. Free agents are keener than contracted players, but not pushovers:
+ * - a hard ceiling: players clearly above the club's level never drop down to it, whatever the pay
+ * - the asking wage gives ~55-70% for a fitting player, 115-130% of it ~80-90%, well below it ~nothing
+ * - the dice are rolled once per player, club and week, and only two offers are heard a week
+ */
+export function freeAgentChance(g: GameState, p: Player, buyer: Club, wage: number): { chance: number; hard: string | null; repHit: number } {
+  const gap = p.ca - avgCa(g, buyer);
+  const star = p.ca >= 72 && p.age < 34;
+  if (buyer.tier >= 2 && (gap >= (p.age >= 33 ? 12 : 8) || star)) {
+    return { chance: 0, hard: `Club reputation too low: ${p.lastName} will not drop down to a club of your level, whatever you pay.`, repHit: 1 };
+  }
+  // unemployed players are ~9 points more forgiving about stature than players at a club
+  const stature = clamp((p.ca - 40) * 1.6, 0, 100);
+  const repGap = Math.max(0, stature - buyer.reputation - 9);
+  const repHit = clamp(repGap * 0.012, 0, 0.3);
+  const base = clamp(0.68 - Math.max(0, gap) * 0.02 - repHit, 0.2, 0.68);
+  const ask = Math.max(1, demandedWage(p, buyer, g));
+  const r = wage / ask;
+  let chance: number;
+  if (r >= 1) chance = base + (0.92 - base) * (1 - Math.exp(-(r - 1) * 6));
+  else chance = base * Math.pow(clamp((r - 0.8) / 0.2, 0, 1), 1.5);
+  return { chance: clamp(chance, 0, 0.92), hard: null, repHit };
+}
+
+export function freeAgentDecision(g: GameState, p: Player, buyer: Club, wage: number, years: number): { ok: boolean; reason: string } {
+  if (years > 5 || years < 1) return { ok: false, reason: 'Contract length must be 1–5 years.' };
+  if (p.age >= 33 && years > 2) return { ok: false, reason: 'At his age he only wants a short deal.' };
+  const dec = freeAgentChance(g, p, buyer, wage);
+  if (dec.hard) return { ok: false, reason: dec.hard };
+  const tries = p.faTry && p.faTry.clubId === buyer.id && p.faTry.season === g.season.year && p.faTry.week === g.season.matchweek ? p.faTry.n : 0;
+  if (tries >= 2) return { ok: false, reason: `${p.lastName}'s agent has stopped taking your calls this week. Try again next matchweek.` };
+  const roll = hash01(p.paSeed, `fa:${buyer.id}:${g.season.year}:${g.season.matchweek}`);
+  if (roll < dec.chance) return { ok: true, reason: 'Terms agreed.' };
+  p.faTry = { clubId: buyer.id, season: g.season.year, week: g.season.matchweek, n: tries + 1 };
+  const ask = demandedWage(p, buyer, g);
+  const reason = wage < ask
+    ? `Wage offer below expectations: his agent wants about ${fmtMoney(Math.round(ask / 10) * 10)}/wk.`
+    : dec.repHit >= 0.08 ? `Club reputation too low: ${p.lastName} is not convinced by a club of your standing. A higher wage may sway him.`
+      : `Wage offer below expectations: ${p.lastName} turned down ${fmtMoney(wage)}/wk. More money may change his mind.`;
+  return { ok: false, reason };
+}
+
 export function signFreeAgent(g: GameState, clubId: string, playerId: string, wage: number, years: number): { ok: boolean; message: string } {
   const p = g.players[playerId];
   const club = g.clubs[clubId];
   if (!p || p.clubId) return { ok: false, message: 'Not a free agent.' };
   if (club.finances.bank < 0) return { ok: false, message: 'IN THE RED: signings are frozen.' };
   if (club.playerIds.length >= 32) return { ok: false, message: 'Squad is full (32).' };
-  const will = playerWillingness(g, p, club, wage, years);
-  if (!will.ok) return { ok: false, message: will.reason };
+  const will = freeAgentDecision(g, p, club, wage, years);
+  if (!will.ok) {
+    fax(g, { kind: 'BID_RESPONSE', from: `${p.lastName}'s agent`, title: `TALKS FAILED: ${fullName(p)}`, playerId: p.id, resolved: true, urgent: false, body: `${fullName(p)} turned down your offer of ${fmtMoney(wage)}/wk for ${years} yr. ${will.reason}` });
+    return { ok: false, message: will.reason };
+  }
   const cap = canAffordWage(g, club, wage);
   if (!cap.ok) return { ok: false, message: cap.message };
   const bonus = signingBonus(g, p, club, wage);

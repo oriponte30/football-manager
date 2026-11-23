@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { createRng } from '../rng';
 import { generateWorld } from '../worldGenerator';
 import { acceptJob, advanceMatchweek } from '../seasonLoop';
-import { listPlayer, aiIncomingBids, processLoanList, maybeAiTradeFax, valuePlayer, windowOpen } from '../transferEngine';
+import { listPlayer, aiIncomingBids, processLoanList, maybeAiTradeFax, valuePlayer, windowOpen, windowFor, windowWeeks, avgCa, demandedWage, freeAgentChance, signFreeAgent } from '../transferEngine';
 import { maybeCreateDilemma, applyDilemmaEffects } from '../moraleEngine';
 import { startDayAfter, markWatched, answerPress } from '../weekEngine';
+import { weeklyXP, applyXP, ageOneYear } from '../progressionEngine';
+import { ovrFor } from '../ratings';
+import type { PlayerMatchStats } from '../../types/match';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -107,5 +110,98 @@ describe('trade offers', () => {
       if (f) { urgent++; expect(f.urgent).toBe(true); expect(g.urgentFaxIds).toContain(f.id); }
     }
     expect(urgent).toBeGreaterThan(3);
+  });
+});
+
+describe('young talent growth', () => {
+  it('a 49 OVR kid with a high ceiling grows fast early, then eases off near the top, and never passes his ceiling', () => {
+    const g = career(700);
+    const rng = createRng(3);
+    const p = structuredClone(Object.values(g.players).find((x) => x.position === 'CM')!);
+    p.age = 18; p.careerCurve = 'STANDARD'; p.truePA = 82; p.xpBank = 0; p.moraleValue = 60; p.injuryWeeks = 0;
+    for (const k of Object.keys(p.stats) as (keyof typeof p.stats)[]) p.stats[k] = Math.max(15, p.stats[k] - 32);
+    p.ca = ovrFor(p.stats, p.position);
+    const start = p.ca;
+    const cas: number[] = [];
+    // a terrible coach (1 star) must hold a kid back well behind a great one (5 stars)
+    const yearWith = (stars: number) => {
+      const q = structuredClone(p);
+      const r = createRng(11);
+      for (let w = 0; w < 30; w++) { q.xpBank += weeklyXP(q, { minutes: 90, rating: 6.8 } as PlayerMatchStats, stars, 3, true); applyXP(r, q, 'BALANCED', false); }
+      return q.ca - start;
+    };
+    expect(yearWith(1)).toBeLessThan(yearWith(5) - 4);
+    for (let season = 0; season < 5; season++) {
+      for (let w = 0; w < 30; w++) {
+        p.xpBank += weeklyXP(p, { minutes: 90, rating: 6.8 } as PlayerMatchStats, 3, 3, true);
+        applyXP(rng, p, 'BALANCED', false);
+      }
+      ageOneYear(rng, p);
+      cas.push(p.ca);
+    }
+    const firstYear = cas[0] - start;
+    const lastYear = cas[4] - cas[3];
+    expect(firstYear).toBeGreaterThanOrEqual(10);
+    expect(firstYear).toBeLessThanOrEqual(20);
+    expect(lastYear).toBeLessThan(firstYear / 2);
+    expect(cas[4]).toBeLessThanOrEqual(82);
+  });
+});
+
+describe('free agents: coverage, windows, signing odds', () => {
+  const groups: Record<string, string[]> = { GK: ['GK'], CB: ['CB'], FB: ['LB', 'RB'], MID: ['CDM', 'CM'], CAM: ['CAM'], WING: ['LW', 'RW'], ST: ['ST'] };
+  it('every position is stocked at several levels, from the start and after rollovers', () => {
+    for (let seed = 0; seed < 4; seed++) {
+      const g = career(800 + seed);
+      const pool = g.freeAgentIds.map((id) => g.players[id]);
+      expect(pool.filter((p) => p.position === 'GK').length).toBeGreaterThanOrEqual(5);
+      for (const [name, ps] of Object.entries(groups)) {
+        const grp = pool.filter((p) => ps.includes(p.position));
+        expect(grp.length, name).toBeGreaterThanOrEqual(name === 'CAM' ? 3 : name === 'GK' ? 5 : 4);
+        expect(Math.min(...grp.map((p) => p.ca)), name).toBeLessThan(58);
+        expect(Math.max(...grp.map((p) => p.ca)), name).toBeGreaterThanOrEqual(63);
+      }
+    }
+  });
+  it('windows: summer through MW5 and winter MW16-19', () => {
+    expect(windowFor(5)).toBe('SUMMER');
+    expect(windowFor(6)).toBe('CLOSED');
+    expect(windowFor(16)).toBe('WINTER');
+    expect(windowFor(19)).toBe('WINTER');
+    expect(windowFor(20)).toBe('CLOSED');
+    expect(windowWeeks(1)).toMatchObject({ open: true, weeks: 5 });
+    expect(windowWeeks(18)).toMatchObject({ open: true, weeks: 2 });
+  });
+  it('wage curve: ~55-70% at the asking wage, ~80-90% well above, and a hard ceiling above the club', () => {
+    const g = career(900);
+    const club = g.clubs[g.manager.clubId!];
+    club.tier = 2;
+    const mine = avgCa(g, club);
+    const fit = { ...Object.values(g.players)[0], ca: Math.round(mine), age: 26, lastName: 'Fit' } as never as ReturnType<typeof structuredClone>;
+    const p = fit as unknown as import('../../types/player').Player;
+    const ask = demandedWage(p, club, g);
+    const at = (m: number) => freeAgentChance(g, p, club, Math.round(ask * m)).chance;
+    expect(at(1)).toBeGreaterThan(0.55);
+    expect(at(1)).toBeLessThan(0.72);
+    expect(at(1.15)).toBeGreaterThan(0.75);
+    expect(at(1.3)).toBeGreaterThan(0.8);
+    expect(at(1.3)).toBeLessThan(0.93);
+    expect(at(0.8)).toBeLessThan(0.05);
+    const star = { ...p, ca: Math.round(mine) + 10 } as typeof p;
+    expect(freeAgentChance(g, star, club, 1e9).chance).toBe(0);
+    expect(freeAgentChance(g, star, club, 1e9).hard).toMatch(/reputation/i);
+  });
+  it('signing is deterministic per week and limited to two offers, with a clear reason', () => {
+    const g = career(910);
+    const club = g.clubs[g.manager.clubId!];
+    club.tier = 2; club.finances.bank = 5_000_000;
+    const mine = avgCa(g, club);
+    const p = g.freeAgentIds.map((id) => g.players[id]).filter((x) => Math.abs(x.ca - mine) <= 3 && x.age < 31)[0];
+    if (!p) return;
+    const ask = demandedWage(p, club, g);
+    const r1 = signFreeAgent(g, club.id, p.id, Math.round(ask * 0.7), 2);
+    expect(r1.ok).toBe(false);
+    expect(r1.message).toMatch(/wage offer below expectations/i);
+    expect(g.faxes.some((f) => f.title.startsWith('TALKS FAILED'))).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ import { rollNationality } from '../data/nationalities';
 import { createRng, clamp, type Rng } from './rng';
 import { nextId } from './ids';
 import { generatePlayer, SQUAD_TEMPLATE } from './playerGenerator';
+import { ensureFreeAgentCoverage } from './freeAgentPool';
 import { generateStaff, generateStaffMarket } from './staffGenerator';
 import { fillLineup, preferredRoles, squadStrength } from './lineup';
 import { valuePlayer } from './transferEngine';
@@ -318,6 +319,7 @@ export function generateWorld(managerName: string, country: CountryCode, seed: n
     g.players[p.id] = p;
     g.freeAgentIds.push(p.id);
   }
+  ensureFreeAgentCoverage(g, rng, country);
 
   generateStaffMarket(g, rng, country);
 
