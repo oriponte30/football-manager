@@ -22,23 +22,35 @@ the header turns red if the browser refuses the write).
 2. **Choose 1 of 3 faxed offers** from the five balanced Tier 3 archetypes
    (Fallen Giant, Tiny Underdog, Youth Gamble, Volatile Owner, Cult Club), or open
    the tucked-away *Free Pick* to take any club.
-3. **Tactics & Squad (2):** formation, the four Team Dials, per-slot Role + Duty,
-   click-to-swap or drag magnets, bench, team training focus and up to 3 tagged
-   players for individual focus.
-4. **Transfers & Scouting (3):** search the market, send the scout (1★ faxes are
-   messy ranges, 5★ are crisp), fax a bid (optionally including a player, or as a
-   loan), then sign the contract from the reply fax next turn. Free agents sign
-   instantly. Quarterly youth intakes land in the Youth Intake folder.
-5. **Club & Finances (4):** bank, wage bill, cash flow, facility upgrades,
-   staff hiring, board confidence, fan interest and your career record.
-6. **Matchday (1):** scouting preview, **PLAY MATCHWEEK** (or SIM ×5), live CRT
-   ticker, diagnostic xG/xA/xGC post-match analysis, tables, cup and European bracket.
-7. **World News (5):** the back page of a 1990s broadsheet, localised per nation
-   (*The Sunday Pitch*, *El Balón Diario*, *La Gazzetta del Campo*, *Der Anstoß*,
-   *Le Quotidien Foot*). Giant lead headline, two columns of briefs, a red
-   **MY CLUB** stamp on your stories and a *Full Paper / My Club* filter.
+3. **Tactics & Squad (2):** formation (each shape keeps its own familiarity), the
+   four Team Dials, per-slot Role + Duty + an individual **instruction** (hold up
+   the ball, overlap, shoot on sight…), magnets for the XI, faces for the bench and
+   reserves. Click anyone to open his card with stats, form, fitness and morale,
+   compared against the XI player he'd replace, and start him in one click. The
+   **Roster** sub-tab lists everyone with potential, value, wage, contract and status.
+4. **Transfers & Scouting (3):** the Chief Scout's **shortlist** (refreshed every
+   four weeks; a better scout finds more, better names and hidden gems), the full
+   market, free agents (signing bonus, and good players snub small clubs), loans,
+   scouting and youth intake.
+5. **Club & Finances (4):** bank, wage bill, cash flow, facilities, board, fans and
+   staff hiring. Staff look at your club: the best won't come to a small one, a
+   half-star above your level wants a premium, and hiring costs a signing-on fee
+   plus the outgoing man's pay-off.
+6. **Matchday (1):** the week runs *prep → matchday → the morning after*.
+   **KICK OFF** plays the week and you watch each of your games live (1×/2×/4×/skip,
+   your goals green, theirs red, subs and tactical changes as they happen), with
+   stats only at full time. The morning after has the recovery session, a press
+   conference and a once-a-week one-on-one drill. **QUICK SIM ×5** skips ahead
+   and stops if something urgent arrives.
+7. **The paper:** headlines crawl across the top of the desk; click it (or press
+   `N`) for the full localised broadsheet.
 
-Keyboard: `1`–`5` switch screens, `F` opens the fax machine.
+The fax machine rings and opens itself for urgent paperwork (bids for your
+players, swap proposals, job offers, the sack). Other clubs bid during the
+windows; accept, reject or name your price, and they'll meet it, come back
+with a final offer, or walk away. Dressing-room dilemmas pop up on their own.
+
+Keyboard: `1`–`4` switch screens, `N` opens the paper, `F` the fax machine.
 
 ## Architecture
 
@@ -120,6 +132,11 @@ CLEARED`) back.
 | 30 nationalities with native name pools; senior squads ~55–65% domestic, youth ~70%; foreign imports weighted to big football nations with league-specific ties | `data/nationalities.ts` |
 | Unique worlds: fresh seed per career, randomised playstyles (stat skew, natural role, fitting traits), squad age/depth profiles, AI tactical identities (Catenaccio, Gegenpress, Long Ball…) and strength/reputation rolled within tier bounds | `data/playstyles.ts`, `worldGenerator.ts` |
 | AI ↔ AI transfer market across all five countries during windows | `transferEngine.ts` (`aiWorldTransfers`) |
+| The manager's week: phases, recovery session, press conference, one-on-one drills | `weekEngine.ts`, `data/drills.ts` |
+| Per-formation familiarity that only moves when matches are played | `familiarityEngine.ts` |
+| Player instructions and in-match substitutions / AI tactical changes | `data/instructions.ts`, `matchEngine.ts` |
+| Scout shortlist scaled by Chief Scout stars | `shortlistEngine.ts` |
+| Procedural portraits by nationality (memoised SVG) | `components/Face.tsx` |
 
 ## Play online (GitHub Pages)
 

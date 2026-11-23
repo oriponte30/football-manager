@@ -23,6 +23,10 @@ export interface TransferBid {
   resolveWeek: number;
   season: number;
   note: string;
+  /** incoming bids: the buyer's hidden walk-away price */
+  walkAway?: number;
+  /** incoming bids: negotiation rounds used */
+  rounds?: number;
 }
 
 export interface LoanOffer {
@@ -122,4 +126,6 @@ export interface FaxMessage {
   tradeId?: string;
   trade?: TradeProposal;
   resolved: boolean;
+  /** urgent faxes open the fax machine on their own */
+  urgent?: boolean;
 }

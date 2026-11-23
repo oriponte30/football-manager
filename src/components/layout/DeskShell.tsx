@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Trophy, Users, ArrowLeftRight, Building2, Printer, Save, AlertTriangle, Newspaper } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Trophy, Users, ArrowLeftRight, Building2, Save, AlertTriangle, Newspaper, X } from 'lucide-react';
 import { useGameStore, type Screen } from '../../store/useGameStore';
 import { useGame, useUserClub, Modal, ordinal } from '../ui';
 import { fmtMoney } from '../../engine/financeEngine';
@@ -12,77 +12,102 @@ import NewsTab from '../news/NewsTab';
 import FaxInboxModal from '../club/FaxInboxModal';
 import PlayerDossierModal from '../tactics/PlayerDossierModal';
 import CRTMonitor from './CRTMonitor';
+import { matchDate } from '../news/NewsTab';
 
 const TABS: { id: Screen; label: string; icon: typeof Trophy; key: string }[] = [
   { id: 'MATCHDAY', label: 'Matchday & Table', icon: Trophy, key: '1' },
   { id: 'TACTICS', label: 'Tactics & Squad', icon: Users, key: '2' },
   { id: 'TRANSFERS', label: 'Transfers & Scouting', icon: ArrowLeftRight, key: '3' },
   { id: 'CLUB', label: 'Club & Finances', icon: Building2, key: '4' },
-  { id: 'NEWS', label: 'World News', icon: Newspaper, key: '5' },
 ];
 
 export default function DeskShell() {
   const g = useGame();
   const club = useUserClub();
-  const { screen, setScreen, faxOpen, setFaxOpen, dossierId, openDossier, toasts, saveError } = useGameStore();
+  const { screen, setScreen, faxOpen, setFaxOpen, dossierId, openDossier, toasts, saveError, simming, newsOpen, setNewsOpen } = useGameStore();
   const unread = g.faxes.filter((f) => !f.read).length;
   const actionable = g.faxes.filter((f) => !f.resolved).length;
   const pos = leaguePosition(g, club.id);
-  // "EXTRA!" when a big story broke this week
-  const extra = g.news.some((n) => n.year === g.season.year && n.matchweek >= Math.min(30, g.season.matchweek - 1) && (n.weight >= 4 || n.myClub));
+  const [ringing, setRinging] = useState(false);
+  const [dilemmaLater, setDilemmaLater] = useState<string | null>(null);
+  const quietPhase = g.phase === 'MATCHDAY' || simming;
+  const showDilemma = !!g.dilemma && !quietPhase && !faxOpen && dilemmaLater !== g.dilemma.id;
+
+  // urgent paperwork: the fax machine rings, prints, and lands on your desk
+  const urgentKey = g.urgentFaxIds.join(',');
+  const ringTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!urgentKey || quietPhase || faxOpen || showDilemma) return;
+    const first = g.urgentFaxIds.find((id) => g.faxes.some((f) => f.id === id && !f.resolved));
+    if (!first) { useGameStore.getState().clearUrgentFaxes(); return; }
+    setRinging(true);
+    ringTimer.current = window.setTimeout(() => {
+      setRinging(false);
+      useGameStore.getState().openFax(first);
+      useGameStore.getState().clearUrgentFaxes();
+    }, 1100);
+    return () => { if (ringTimer.current) window.clearTimeout(ringTimer.current); setRinging(false); };
+  }, [urgentKey, quietPhase, faxOpen, showDilemma]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'SELECT') return;
       const t = TABS.find((x) => x.key === e.key);
       if (t) setScreen(t.id);
+      if (e.key === '5' || e.key.toLowerCase() === 'n') setNewsOpen(!useGameStore.getState().newsOpen);
       if (e.key.toLowerCase() === 'f') setFaxOpen(!useGameStore.getState().faxOpen);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setScreen, setFaxOpen]);
+  }, [setScreen, setFaxOpen, setNewsOpen]);
 
+  const date = matchDate(g.season.year, Math.min(30, g.season.matchweek));
   return (
-    <div className="min-h-full flex flex-col">
-      {/* desk header strip */}
-      <header className="px-4 pt-3">
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-4 shadow-lg" style={{ background: club.colors[0], borderColor: club.colors[1] }} />
-            <div className="text-paper">
-              <div className="font-type text-2xl leading-6 text-[#f3ecd8] drop-shadow">{club.name}</div>
-              <div className="font-mono text-lg text-[#e8cf8f] leading-5">
-                {g.leagues[club.leagueId].name} · {g.leagues[club.leagueId].table[club.id]?.p ? ordinal(pos) : 'Pre-season'} · Season {g.season.year}/{String((g.season.year + 1) % 100).padStart(2, '0')} · {g.season.matchweek > 30 ? 'Season over' : `Matchweek ${g.season.matchweek}/30`}
-                {g.season.window !== 'CLOSED' && <span className="ml-2 text-green-300">[{g.season.window} WINDOW OPEN]</span>}
+    <div className="min-h-full flex flex-col desk">
+      <div className="lamp-glow" aria-hidden />
+      <header className="px-4 pt-3 relative z-[1]">
+        <div className="flex flex-wrap items-end gap-4 justify-between">
+          <div className="flex items-end gap-4">
+            <DeskCalendar date={date} />
+            <div className="nameplate">
+              <span className="crest" style={{ background: club.colors[0], borderColor: club.colors[1] }} />
+              <div>
+                <div className="nameplate-club">{club.name}</div>
+                <div className="nameplate-sub">
+                  {g.manager.name} · {g.leagues[club.leagueId].name} · {g.leagues[club.leagueId].table[club.id]?.p ? ordinal(pos) : 'Pre-season'} · {g.season.matchweek > 30 ? 'Season over' : `MW ${g.season.matchweek}/30`}
+                  {g.season.window !== 'CLOSED' && <span className="ml-2 window-open">{g.season.window} WINDOW OPEN</span>}
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 font-mono text-lg">
+          <div className="flex items-end gap-3 font-mono text-lg">
             <Gauge label="BANK" value={fmtMoney(club.finances.bank)} warn={club.finances.bank < 0} />
             <Gauge label="BOARD" value={`${Math.round(club.board.value)}%`} warn={club.board.value < 30} />
             <Gauge label="FANS" value={`${Math.round(club.fanInterest)}%`} />
-            <button className="btn btn-amber relative flex items-center gap-2" onClick={() => setFaxOpen(true)} title="Fax inbox (F)">
-              <Printer size={18} /> FAX
-              {unread > 0 && <span className="absolute -top-2 -right-2 bg-crimson text-white text-sm rounded-full min-w-[22px] h-[22px] flex items-center justify-center px-1 animate-pulse">{unread}</span>}
+            <button className={`fax-machine ${ringing ? 'ringing' : ''} ${unread > 0 ? 'has-mail' : ''}`} onClick={() => setFaxOpen(true)} title="Fax machine (F)">
+              <span className="fax-paper" />
+              <span className="fax-body"><span className="fax-led" /><span className="fax-label">FAX</span></span>
+              {unread > 0 && <span className="fax-count">{unread}</span>}
             </button>
-            <span title={saveError ? 'Save failed (storage full?)' : 'Autosaved to this browser'} className={saveError ? 'text-red-400' : 'text-green-300'}>
+            <span title={saveError ? 'Save failed (storage full?)' : 'Autosaved to this browser'} className={`pb-2 ${saveError ? 'text-red-400' : 'text-green-300'}`}>
               {saveError ? <AlertTriangle size={18} /> : <Save size={18} />}
             </span>
           </div>
         </div>
-        <nav className="flex gap-1 mt-3 overflow-x-auto">
+        <nav className="flex gap-1 mt-3 overflow-x-auto items-end">
           {TABS.map((t) => (
             <button key={t.id} className={`nav-tab flex items-center gap-2 whitespace-nowrap ${screen === t.id ? 'on' : ''}`} onClick={() => setScreen(t.id)}>
-              <t.icon size={16} /> <span className="opacity-60">{t.key}</span> {t.label}
+              <t.icon size={16} /> {t.label}
               {t.id === 'TRANSFERS' && g.pendingYouth.length > 0 && <span className="text-xs bg-crimson text-white rounded px-1">YOUTH</span>}
-              {t.id === 'NEWS' && extra && <span className="text-xs bg-crimson text-white rounded px-1">EXTRA!</span>}
+              {t.id === 'MATCHDAY' && g.phase === 'MATCHDAY' && <span className="text-xs bg-crimson text-white rounded px-1 animate-pulse">LIVE</span>}
             </button>
           ))}
-          {actionable > 0 && <span className="ml-auto self-center text-[#e8cf8f] font-mono text-lg">{actionable} fax{actionable > 1 ? 'es' : ''} need attention</span>}
+          {actionable > 0 && <button className="ml-auto self-center text-[#e8cf8f] font-mono text-lg hover:underline" onClick={() => setFaxOpen(true)}>{actionable} fax{actionable > 1 ? 'es' : ''} need attention</button>}
         </nav>
       </header>
-      <main className="flex-1 px-4 pb-6 border-t-4 border-navy-900">
-        <div className="pt-4">
+      <main className="flex-1 px-4 pb-6 blotter relative z-[1]">
+        <NewsCrawl />
+        <div className="pt-4 page-in" key={screen}>
           {screen === 'MATCHDAY' && <MatchdayScreen />}
           {screen === 'TACTICS' && <TacticsScreen />}
           {screen === 'TRANSFERS' && <TransfersScreen />}
@@ -90,12 +115,21 @@ export default function DeskShell() {
           {screen === 'NEWS' && <NewsTab />}
         </div>
       </main>
-      {g.status === 'SEASON_END' && g.seasonSummary && <SeasonSummaryModal />}
+      {g.status === 'SEASON_END' && g.seasonSummary && g.phase !== 'MATCHDAY' && <SeasonSummaryModal />}
+      {showDilemma && <DilemmaModal onLater={() => setDilemmaLater(g.dilemma!.id)} />}
+      {newsOpen && (
+        <Modal onClose={() => setNewsOpen(false)} wide>
+          <div className="relative paper-drop">
+            <button className="absolute -right-3 -top-4 z-10 btn btn-sm" onClick={() => setNewsOpen(false)}><X size={16} /></button>
+            <NewsTab />
+          </div>
+        </Modal>
+      )}
       {faxOpen && <FaxInboxModal />}
       {dossierId && g.players[dossierId] && <PlayerDossierModal playerId={dossierId} onClose={() => openDossier(null)} />}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
         {toasts.map((t) => (
-          <div key={t.id} className={`fax px-4 py-3 text-sm ${t.ok ? '' : 'border-l-4 border-crimson'}`} onClick={() => useGameStore.getState().dismissToast(t.id)}>
+          <div key={t.id} className={`fax px-4 py-3 text-sm toast-in ${t.ok ? '' : 'border-l-4 border-crimson'}`} onClick={() => useGameStore.getState().dismissToast(t.id)}>
             {t.text}
           </div>
         ))}
@@ -104,11 +138,70 @@ export default function DeskShell() {
   );
 }
 
+function DeskCalendar({ date }: { date: Date }) {
+  return (
+    <div className="desk-calendar" title="Matchday">
+      <div className="cal-month">{date.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }).toUpperCase()}</div>
+      <div className="cal-day">{date.getUTCDate()}</div>
+      <div className="cal-year">{date.getUTCFullYear()}</div>
+    </div>
+  );
+}
+
+/** A vidiprinter crawl of the week's headlines; click it to unfold the paper. */
+function NewsCrawl() {
+  const g = useGame();
+  const setNewsOpen = useGameStore((s) => s.setNewsOpen);
+  const items = g.news.slice(0, 12);
+  if (items.length === 0) return null;
+  const extra = g.news.some((n) => n.year === g.season.year && n.matchweek >= Math.min(30, g.season.matchweek - 1) && (n.weight >= 4 || n.myClub));
+  const dur = Math.max(28, items.reduce((a, n) => a + n.headline.length, 0) / 7);
+  return (
+    <button className="news-crawl" onClick={() => setNewsOpen(true)} title="Open the paper (N)">
+      <span className="crawl-label"><Newspaper size={15} /> {extra ? 'EXTRA!' : 'NEWS'}</span>
+      <span className="crawl-window">
+        <span className="crawl-track" style={{ animationDuration: `${dur}s` }} key={items[0].id}>
+          {[0, 1].map((k) => (
+            <span key={k} aria-hidden={k === 1}>
+              {items.map((n) => <span key={n.id} className={`crawl-item ${n.myClub ? 'mine' : ''}`}>{n.headline}</span>)}
+            </span>
+          ))}
+        </span>
+      </span>
+      <span className="crawl-open">READ ▸</span>
+    </button>
+  );
+}
+
+function DilemmaModal({ onLater }: { onLater: () => void }) {
+  const g = useGame();
+  const resolve = useGameStore((s) => s.resolveDilemma);
+  const d = g.dilemma!;
+  return (
+    <Modal onClose={onLater}>
+      <div className="manila p-5 pt-6 mt-8 paper-drop">
+        <div className="manila-tab">DRESSING ROOM · URGENT</div>
+        <div className="font-type text-2xl">{d.title}</div>
+        <div className="mt-2 text-lg leading-6">{d.text}</div>
+        <div className="mt-4 flex flex-col gap-2">
+          {d.options.map((o, i) => (
+            <button key={i} className="choice-card text-left" onClick={() => resolve(i)}>
+              <div className="font-bold">{o.label}</div>
+              <div className="text-sm">{o.description}</div>
+            </button>
+          ))}
+        </div>
+        <button className="text-sm underline mt-3 opacity-70" onClick={onLater}>Leave it on the fax for now</button>
+      </div>
+    </Modal>
+  );
+}
+
 function Gauge({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
-    <div className={`px-2 py-0 rounded border-2 ${warn ? 'border-red-500 bg-red-950 text-red-300' : 'border-[#8a6a46] bg-navy-900 text-amber-crt'} leading-5`}>
-      <div className="text-xs opacity-70">{label}</div>
-      <div>{value}</div>
+    <div className={`gauge ${warn ? 'warn' : ''}`}>
+      <div className="g-label">{label}</div>
+      <div className="text-xl">{value}</div>
     </div>
   );
 }

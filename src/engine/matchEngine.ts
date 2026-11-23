@@ -14,6 +14,7 @@
  */
 import type { Player, Position } from '../types/player';
 import { injuryRiskMult, matchInjuryChance } from './injuryEngine';
+import { INSTRUCTIONS, type InstructionId } from '../data/instructions';
 import type { Duty, FormationId, PlayerRole, RoleAssignment, TeamDials } from '../types/tactics';
 import type {
   AsyncKeyMomentResolver,
@@ -38,6 +39,8 @@ export interface SheetStarter {
   player: Player;
   slot: Position;
   role: RoleAssignment;
+  /** individual instruction for this slot */
+  instruction?: InstructionId | null;
 }
 
 export interface TeamSheet {
@@ -53,6 +56,8 @@ export interface TeamSheet {
   bench: Player[];
   /** physio rating (1–5★) — trims injury odds a touch */
   physioStars?: number;
+  /** AI sides: the engine may change mentality in-game when chasing/protecting a result */
+  autoManage?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +112,7 @@ interface LivePlayer {
   ctrlB: number; resB: number; defB: number; attB: number; createB: number;
   drain: number; injMult: number;
   tTireless: boolean;
+  instr: InstructionId | null;
 }
 
 interface LiveTeam {
@@ -116,6 +122,10 @@ interface LiveTeam {
   subsLeft: number;
   stats: TeamMatchStats;
   hasReckless: boolean;
+  isHome: boolean;
+  /** minutes at which the bench considers a tactical change */
+  subPlan: number[];
+  mentalityShifted: boolean;
   /* cached aggregates (refreshed every few possessions) */
   cMid: number; cDef: number; cAtt: number;
 }
@@ -141,7 +151,7 @@ function staticMult(p: Player, slot: Position, sheet: TeamSheet, isHome: boolean
   return m;
 }
 
-function buildLive(p: Player, slot: Position, role: RoleAssignment, sheet: TeamSheet, isHome: boolean, ctx: MatchContext, sub: boolean, minute: number): LivePlayer {
+function buildLive(p: Player, slot: Position, role: RoleAssignment, sheet: TeamSheet, isHome: boolean, ctx: MatchContext, sub: boolean, minute: number, instr: InstructionId | null = null): LivePlayer {
   const mult = staticMult(p, slot, sheet, isHome, ctx, sub);
   const s = p.stats;
   const lp: LivePlayer = {
@@ -159,11 +169,31 @@ function buildLive(p: Player, slot: Position, role: RoleAssignment, sheet: TeamS
     drain: 0.25 * (sheet.dials.pressing === 'HIGH' ? 1.35 : sheet.dials.pressing === 'LOW' ? 0.8 : 1) * (1.15 - s.physical / 400) * (p.traits.includes('Tireless Engine') ? 0.6 : 1),
     injMult: injuryRiskMult(p, sheet.dials.pressing, sheet.physioStars ?? 2),
     tTireless: p.traits.includes('Tireless Engine'),
+    instr,
   };
   lp.shootW = shooterWeight(lp, false);
   lp.aerialW = shooterWeight(lp, true);
   lp.createW = creatorWeight(lp, sheet.dials.attackingFocus);
+  if (instr) applyInstruction(lp, instr);
   return lp;
+}
+
+/** Individual instruction: tilts weights; players whose natural role suits it get more out of it. */
+function applyInstruction(lp: LivePlayer, id: InstructionId): void {
+  const def = INSTRUCTIONS[id];
+  if (!def) return;
+  const suited = def.suits.includes(lp.p.preferredRole) || def.suits.includes(lp.role);
+  const k = suited ? 1.25 : 0.8;
+  const f = (m: number | undefined) => (m === undefined ? 1 : m >= 1 ? 1 + (m - 1) * k : m);
+  const m = def.mods;
+  lp.shootW *= f(m.shoot);
+  lp.aerialW *= f(m.aerial ?? m.shoot);
+  lp.createW *= f(m.create);
+  lp.ctrlW *= f(m.ctrl);
+  lp.resW *= f(m.res);
+  lp.defW *= f(m.def);
+  lp.drain *= m.drain ?? 1;
+  lp.injMult *= m.inj ?? 1;
 }
 
 const ff = (fit: number) => 0.76 + 0.24 * (fit / 100);
@@ -193,10 +223,15 @@ function refreshAggregates(t: LiveTeam): void {
 }
 
 function makeLive(sheet: TeamSheet, isHome: boolean, ctx: MatchContext): LiveTeam {
-  const players: LivePlayer[] = sheet.starters.map((s) => buildLive(s.player, s.slot, s.role, sheet, isHome, ctx, false, 0));
+  // private copy: AI may shift mentality during the match
+  const own: TeamSheet = { ...sheet, dials: { ...sheet.dials } };
+  const players: LivePlayer[] = own.starters.map((s) => buildLive(s.player, s.slot, s.role, own, isHome, ctx, false, 0, s.instruction ?? null));
   return {
     cMid: 0, cDef: 0, cAtt: 0,
-    sheet,
+    sheet: own,
+    isHome,
+    subPlan: [],
+    mentalityShifted: false,
     players,
     bench: [...sheet.bench],
     subsLeft: 3,
@@ -324,6 +359,7 @@ export function* matchCore(
 ): Generator<KeyMomentEvent, MatchResult, KeyMomentOutcome | undefined> {
   const H = makeLive(homeSheet, true, ctx);
   const A = makeLive(awaySheet, false, ctx);
+  for (const t of [H, A]) t.subPlan = [rng.int(55, 64), rng.int(66, 74), rng.int(76, 84)];
   const events: MatchEvent[] = [];
   const keyMoments: KeyMomentEvent[] = [];
   const total = rng.int(94, 106);
@@ -492,25 +528,28 @@ export function* matchCore(
       }
     }
 
-    // SUBSTITUTIONS
-    if (minute < 58 && !injuredOn(H) && !injuredOn(A)) continue;
+    // SUBSTITUTIONS: forced (injury), fatigue, then planned tactical changes
+    if (minute < 55 && !injuredOn(H) && !injuredOn(A)) continue;
     for (const t of [H, A]) {
+      const opp = t === H ? A : H;
+      const diff = t.stats.goals - opp.stats.goals;
+      // AI benches chase or protect a result
+      if (t.sheet.autoManage && !t.mentalityShifted) {
+        if (minute >= 70 && diff < 0 && t.sheet.dials.mentality !== 'ATTACKING') { t.sheet.dials.mentality = 'ATTACKING'; t.mentalityShifted = true; refreshAggregates(t); events.push({ minute, type: 'TACTICAL', clubId: t.sheet.clubId, text: `${t.sheet.name} throw caution to the wind — all-out attack.` }); }
+        else if (minute >= 80 && diff > 0 && t.sheet.dials.mentality !== 'DEFENSIVE') { t.sheet.dials.mentality = 'DEFENSIVE'; t.mentalityShifted = true; refreshAggregates(t); events.push({ minute, type: 'TACTICAL', clubId: t.sheet.clubId, text: `${t.sheet.name} drop deep to see it out.` }); }
+      }
       if (t.subsLeft <= 0 || t.bench.length === 0) continue;
       for (const lp of t.players) {
         if (t.subsLeft <= 0) break;
         if (!lp.on) continue;
-        const needs = lp.st.injured || (minute >= 58 && lp.fit < 58) || (minute >= 70 && lp.fit < 66 && t.subsLeft >= 2);
+        const needs = lp.st.injured || (minute >= 58 && lp.fit < 55) || (minute >= 70 && lp.fit < 62 && t.subsLeft >= 2);
         if (!needs) continue;
-        const subIdx = bestSubFor(t.bench, lp.slot);
-        if (subIdx < 0) continue;
-        const sub = t.bench.splice(subIdx, 1)[0];
-        lp.on = false;
-        lp.leftAt = minute;
-        t.subsLeft--;
-        const np = buildLive(sub, lp.slot, { role: lp.role, duty: lp.duty }, t.sheet, t === H, ctx, true, minute);
-        t.players.push(np);
-        refreshAggregates(t);
-        events.push({ minute, type: 'SUBSTITUTION', clubId: t.sheet.clubId, playerId: sub.id, text: `Change for ${t.sheet.name}: ${playerName(sub)} replaces ${playerName(lp.p)}.` });
+        makeSub(t, lp, minute, diff, ctx, events, lp.st.injured ? 'INJURY' : 'FATIGUE');
+      }
+      if (t.subsLeft > 0 && t.subPlan.length > 0 && minute >= t.subPlan[0]) {
+        t.subPlan.shift();
+        const off = tacticalOff(t, diff, minute);
+        if (off) makeSub(t, off, minute, diff, ctx, events, 'TACTICAL');
       }
     }
   }
@@ -569,16 +608,52 @@ function injuredOn(t: LiveTeam): boolean {
   return false;
 }
 
-function bestSubFor(bench: Player[], slot: Position): number {
+function bestSubFor(bench: Player[], slot: Position, chasing = false): number {
   let best = -1, score = -1;
   for (let i = 0; i < bench.length; i++) {
     const p = bench[i];
     if (p.injuryWeeks > 0) continue;
     if ((slot === 'GK') !== (p.position === 'GK')) continue;
-    const s = p.ca * positionFit(p.position, slot) * (0.7 + 0.3 * p.fitness / 100);
+    let s = p.ca * positionFit(p.position, slot) * (0.7 + 0.3 * p.fitness / 100);
+    if (chasing && p.traits.includes('Super-Sub')) s *= 1.12;
+    s *= 1 - i * 0.004; // respect the manager's bench order on ties
     if (s > score) { score = s; best = i; }
   }
   return best;
+}
+
+const ATTACKING_SLOTS: Position[] = ['ST', 'LW', 'RW', 'CAM'];
+
+/** Who comes off at a planned window: the most tired, or (chasing) the quietest attacker. */
+function tacticalOff(t: LiveTeam, diff: number, minute: number): LivePlayer | null {
+  let best: LivePlayer | null = null, bestScore = Infinity;
+  for (const lp of t.players) {
+    if (!lp.on || lp.slot === 'GK' || lp.enteredAt > 0) continue;
+    const impact = lp.st.goals * 30 + lp.st.assists * 20 + lp.st.shots * 3 + lp.defActions * 1.5 + lp.st.xg * 25;
+    let score = lp.fit + impact;
+    if (diff < 0 && ATTACKING_SLOTS.includes(lp.slot)) score -= 12;
+    if (lp.p.traits.includes('Tireless Engine')) score += 10;
+    if (score < bestScore) { bestScore = score; best = lp; }
+  }
+  if (!best) return null;
+  // nothing to fix: fresh legs only when someone is flagging or the game needs changing
+  if (best.fit > 80 && diff === 0 && minute < 75) return null;
+  if (best.fit > 86 && diff > 0) return null;
+  return best;
+}
+
+function makeSub(t: LiveTeam, lp: LivePlayer, minute: number, diff: number, ctx: MatchContext, events: MatchEvent[], why: 'INJURY' | 'FATIGUE' | 'TACTICAL'): void {
+  const subIdx = bestSubFor(t.bench, lp.slot, diff <= 0 && ATTACKING_SLOTS.includes(lp.slot));
+  if (subIdx < 0) return;
+  const sub = t.bench.splice(subIdx, 1)[0];
+  lp.on = false;
+  lp.leftAt = minute;
+  t.subsLeft--;
+  const np = buildLive(sub, lp.slot, { role: lp.role, duty: lp.duty }, t.sheet, t.isHome, ctx, true, minute, lp.instr);
+  t.players.push(np);
+  refreshAggregates(t);
+  const reason = why === 'INJURY' ? ' (injury)' : why === 'FATIGUE' ? ' (tired legs)' : diff < 0 ? ' — chasing the game' : diff > 0 ? ' — shoring things up' : '';
+  events.push({ minute, type: 'SUBSTITUTION', clubId: t.sheet.clubId, playerId: sub.id, text: `${t.sheet.name}: ${playerName(sub)} on for ${playerName(lp.p)}${reason}.` });
 }
 
 function shootout(rng: Rng, H: LiveTeam, A: LiveTeam): { home: number; away: number } {

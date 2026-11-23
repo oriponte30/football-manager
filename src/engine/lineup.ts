@@ -108,7 +108,7 @@ export function squadStrength(g: GameState, club: Club): number {
   return n === 0 ? 40 : (sum + (11 - n) * 30) / 11;
 }
 
-/** Tactical familiarity drops when systems change; rebuilds over 3–5 matches. */
+/** Switch shape. Familiarity is per formation and only moves when matches are played (familiarityEngine). */
 export function changeFormation(club: Club, f: FormationId): void {
   if (club.tactics.formation === f) return;
   const oldSlots = FORMATIONS[club.tactics.formation].slots;
@@ -129,5 +129,7 @@ export function changeFormation(club: Club, f: FormationId): void {
   club.tactics.formation = f;
   club.tactics.lineup = lineup;
   club.tactics.roles = defaultRoles(f);
-  club.familiarity = Math.max(0, club.familiarity - 30);
+  club.tactics.instructions = lineup.map(() => null);
+  // nothing is lost until a match is actually played in the new shape
+  club.familiarity = club.familiarityByFormation?.[f] ?? 35;
 }

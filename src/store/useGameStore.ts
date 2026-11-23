@@ -11,13 +11,19 @@ import { nextId } from '../engine/ids';
 import { changeFormation, fillLineup } from '../engine/lineup';
 import { assignScout } from '../engine/scoutingEngine';
 import {
-  submitBid, completeBid, signFreeAgent, answerIncomingBid, answerTrade, loanOutPlayer, renewContract, releasePlayer, type BidInput,
+  submitBid, completeBid, signFreeAgent, answerIncomingBid, counterIncomingBid, answerTrade, loanOutPlayer, renewContract, releasePlayer, type BidInput,
 } from '../engine/transferEngine';
 import { signYouth, releaseYouth, loanOutYouth } from '../engine/academyEngine';
 import { hireStaff } from '../engine/staffGenerator';
+import { refreshShortlist } from '../engine/shortlistEngine';
 import { upgradeFacility } from '../engine/financeEngine';
 import { applyDilemmaEffects } from '../engine/moraleEngine';
 import { FORMATIONS } from '../data/formations';
+import type { RecoveryChoice } from '../types/world';
+import type { DrillKind } from '../data/drills';
+import type { InstructionId } from '../data/instructions';
+import { INSTRUCTIONS } from '../data/instructions';
+import { markWatched, startDayAfter, recoverySession, runDrill, answerPress, beginPrep } from '../engine/weekEngine';
 
 export type Screen = 'MATCHDAY' | 'TACTICS' | 'TRANSFERS' | 'CLUB' | 'NEWS';
 
@@ -34,6 +40,11 @@ interface GameStore {
   screen: Screen;
   dossierId: string | null;
   faxOpen: boolean;
+  /** fax to show first when the machine opens (urgent paperwork) */
+  faxFocusId: string | null;
+  /** quick-sim in progress: no pop-ups */
+  simming: boolean;
+  newsOpen: boolean;
   toasts: Toast[];
   saveError: boolean;
   /** increments after each played matchweek (drives the CRT ticker) */
@@ -42,6 +53,9 @@ interface GameStore {
   setScreen(s: Screen): void;
   openDossier(id: string | null): void;
   setFaxOpen(v: boolean): void;
+  openFax(id: string): void;
+  setNewsOpen(v: boolean): void;
+  quickSim(n: number): void;
   toast(text: string, ok?: boolean): void;
   dismissToast(id: number): void;
 
@@ -53,6 +67,14 @@ interface GameStore {
 
   playMatchweek(): void;
   nextSeason(): void;
+  markWatched(resultId: string): void;
+  finishMatchday(): void;
+  recovery(choice: RecoveryChoice): void;
+  drill(playerId: string, drill: DrillKind): void;
+  answerPress(idx: number): void;
+  beginPrep(): void;
+  setInstruction(slot: number, id: InstructionId | null): void;
+  clearUrgentFaxes(): void;
 
   setFormation(f: FormationId): void;
   setDial<K extends keyof TeamDials>(k: K, v: TeamDials[K]): void;
@@ -71,6 +93,7 @@ interface GameStore {
   finalizeBid(bidId: string, acceptCounter: boolean, wage?: number, years?: number): void;
   signFree(playerId: string, wage: number, years: number): void;
   answerIncoming(bidId: string, accept: boolean): void;
+  counterIncoming(bidId: string, ask: number): void;
   answerTrade(faxId: string, accept: boolean): void;
   loanOut(playerId: string): void;
   renew(playerId: string, wage: number, years: number): void;
@@ -130,13 +153,36 @@ export const useGameStore = create<GameStore>()(
         screen: 'MATCHDAY',
         dossierId: null,
         faxOpen: false,
+        faxFocusId: null,
+        simming: false,
+        newsOpen: false,
         toasts: [],
         saveError: false,
         tickerKey: 0,
 
         setScreen: (s) => set({ screen: s }),
         openDossier: (id) => set({ dossierId: id }),
-        setFaxOpen: (v) => set({ faxOpen: v }),
+        setFaxOpen: (v) => set({ faxOpen: v, faxFocusId: v ? get().faxFocusId : null }),
+        openFax: (id) => set({ faxOpen: true, faxFocusId: id }),
+        setNewsOpen: (v) => set({ newsOpen: v }),
+        quickSim: (n) => {
+          if (get().simming) return;
+          set({ simming: true });
+          let i = 0;
+          const step = () => {
+            const st = get();
+            const g = st.game;
+            if (i >= n || !g || g.status !== 'PLAYING' || g.season.matchweek > 30) { set({ simming: false }); return; }
+            st.playMatchweek();
+            get().finishMatchday();
+            i++;
+            const after = get().game;
+            // stop early when something needs the manager
+            if (after && (after.urgentFaxIds.length > 0 || after.dilemma)) { set({ simming: false }); return; }
+            setTimeout(step, 40);
+          };
+          step();
+        },
         toast: (text, ok = true) => {
           const id = toastSeq++;
           set({ toasts: [...get().toasts.slice(-3), { id, text, ok }] });
@@ -169,11 +215,32 @@ export const useGameStore = create<GameStore>()(
 
         playMatchweek: () => {
           const cur = get().game;
-          if (!cur) return;
+          if (!cur || cur.phase === 'MATCHDAY') return;
           const g = structuredClone(cur);
+          if (g.phase === 'DAY_AFTER') {
+            const rng = createRng(g.rngState);
+            beginPrep(g, rng);
+            g.rngState = rng.state;
+          }
           advanceMatchweek(g);
-          set({ game: g, tickerKey: get().tickerKey + 1 });
+          set({ game: g, tickerKey: get().tickerKey + 1, screen: 'MATCHDAY' });
         },
+        markWatched: (resultId) => mutate((g) => { markWatched(g, resultId); }, true),
+        finishMatchday: () => mutate((g, rng) => { if (g.phase === 'MATCHDAY') startDayAfter(g, rng); }, true),
+        recovery: (choice) => { mutate((g, rng) => recoverySession(g, rng, choice)); },
+        drill: (playerId, d) => { mutate((g, rng) => runDrill(g, rng, playerId, d)); },
+        answerPress: (idx) => { mutate((g) => answerPress(g, idx)); },
+        beginPrep: () => mutate((g, rng) => { beginPrep(g, rng); }, true),
+        setInstruction: (slot, id) => mutate((g) => {
+          const c = userClubOf(g);
+          if (!c) return;
+          const arr = [...(c.tactics.instructions ?? [])];
+          while (arr.length < 11) arr.push(null);
+          arr[slot] = id;
+          c.tactics.instructions = arr;
+          return id ? { ok: true, message: `Instruction: ${INSTRUCTIONS[id].label}.` } : undefined;
+        }),
+        clearUrgentFaxes: () => mutate((g) => { g.urgentFaxIds = []; }, true),
         nextSeason: () => {
           const cur = get().game;
           if (!cur) return;
@@ -192,7 +259,6 @@ export const useGameStore = create<GameStore>()(
           const c = userClubOf(g);
           if (!c || c.tactics.dials[k] === v) return;
           c.tactics.dials = { ...c.tactics.dials, [k]: v };
-          c.familiarity = Math.max(0, c.familiarity - 6);
         }),
         swapSlots: (a, b) => mutate((g) => {
           const c = userClubOf(g);
@@ -280,6 +346,7 @@ export const useGameStore = create<GameStore>()(
         finalizeBid: (bidId, acceptCounter, wage, years) => { mutate((g) => completeBid(g, bidId, acceptCounter, wage, years)); },
         signFree: (playerId, wage, years) => { mutate((g) => (g.manager.clubId ? signFreeAgent(g, g.manager.clubId, playerId, wage, years) : undefined)); },
         answerIncoming: (bidId, accept) => { mutate((g) => answerIncomingBid(g, bidId, accept)); },
+        counterIncoming: (bidId, ask) => { mutate((g) => counterIncomingBid(g, bidId, ask)); },
         answerTrade: (faxId, accept) => { mutate((g) => answerTrade(g, faxId, accept)); },
         loanOut: (playerId) => { mutate((g, rng) => (g.manager.clubId ? loanOutPlayer(g, rng, g.manager.clubId, playerId) : undefined)); },
         renew: (playerId, wage, years) => { mutate((g) => renewContract(g, playerId, wage, years)); },
@@ -289,7 +356,15 @@ export const useGameStore = create<GameStore>()(
         releaseYouth: (id) => { mutate((g) => releaseYouth(g, id)); },
         loanYouth: (id) => { mutate((g, rng) => (g.manager.clubId ? loanOutYouth(g, rng, g.manager.clubId, id) : undefined)); },
 
-        hire: (staffId) => { mutate((g) => (g.manager.clubId ? hireStaff(g, g.manager.clubId, staffId) : undefined)); },
+        hire: (staffId) => {
+          mutate((g, rng) => {
+            if (!g.manager.clubId) return;
+            const role = g.staff[staffId]?.role;
+            const res = hireStaff(g, g.manager.clubId, staffId);
+            if (res.ok && role === 'CHIEF_SCOUT') refreshShortlist(g, rng, true);
+            return res;
+          });
+        },
         upgrade: (key) => { mutate((g) => { const c = userClubOf(g); return c ? upgradeFacility(c, key) : undefined; }); },
 
         markFaxRead: (id) => mutate((g) => {

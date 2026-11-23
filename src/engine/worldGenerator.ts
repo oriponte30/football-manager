@@ -23,7 +23,7 @@ import { fillLineup, preferredRoles, squadStrength } from './lineup';
 import { valuePlayer } from './transferEngine';
 import { setupSeason } from './seasonLoop';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export function createEmptyGame(managerName: string, country: CountryCode, seed: number): GameState {
   return {
@@ -39,7 +39,7 @@ export function createEmptyGame(managerName: string, country: CountryCode, seed:
     euro: { groups: [], groupFixtures: [], quarterFinals: [], semiFinals: [], final: null, stage: 'GROUPS', championId: null, defendingChampionId: null },
     freeAgentIds: [], staffMarketIds: [], faxes: [], bids: [], scouting: [], scoutReports: {},
     pendingYouth: [], jobOffers: [], dilemma: null, lastUserResults: [], lastWeekResults: [],
-    history: [], seasonSummary: null, aiTradeFaxesThisSeason: 0, lastSimMs: 0, news: [], worldSeed: seed >>> 0, transferRecord: { fee: 12_000_000, playerName: 'the standing record', year: 1992 }, newsKeys: {},
+    history: [], seasonSummary: null, aiTradeFaxesThisSeason: 0, lastSimMs: 0, news: [], phase: 'PREP', watchedResults: [], pressConference: null, dayAfter: { recovery: null, pressDone: false }, lastDrill: null, urgentFaxIds: [], shortlist: { ids: [], year: 0, week: 0 }, worldSeed: seed >>> 0, transferRecord: { fee: 12_000_000, playerName: 'the standing record', year: 1992 }, newsKeys: {},
   };
 }
 
@@ -191,8 +191,11 @@ function createClub(g: GameState, rng: Rng, spec: ClubSpec, colorIdx: number): C
       bench: [],
       trainingFocus: 'BALANCED',
       trainingTags: [],
+      instructions: [],
     },
     familiarity: 80,
+    familiarityByFormation: { [formation]: 80 },
+    lastPlayedDials: null,
     teamAtmosphere: 55,
     colors: CLUB_COLORS[colorIdx % CLUB_COLORS.length],
     rivalId: null,

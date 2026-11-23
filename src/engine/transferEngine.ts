@@ -44,18 +44,37 @@ export function askingPrice(g: GameState, p: Player, seller: Club, buyer: Club):
   return Math.round(v / 5000) * 5000;
 }
 
-export function demandedWage(p: Player, buyer: Club): number {
+/**
+ * What his agent asks for. Players clearly better than the squad know they
+ * are doing you a favour, and price it in.
+ */
+export function demandedWage(p: Player, buyer: Club, g?: GameState): number {
   const market = wageFor(p.ca, buyer.tier, buyer.country, p.position);
-  return Math.round(Math.max(market, p.contract.wage * 1.08) / 10) * 10;
+  let w = Math.max(market, p.contract.wage * 1.08);
+  if (g) {
+    const gap = p.ca - avgCa(g, buyer);
+    if (gap > 4) w *= 1 + (gap - 4) * 0.07;
+  }
+  return Math.round(w / 10) * 10;
+}
+
+/** One-off signing bonus for a free agent (the agent's cut and a welcome cheque). */
+export function signingBonus(g: GameState, p: Player, buyer: Club, wage: number): number {
+  const gap = Math.max(0, p.ca - avgCa(g, buyer));
+  return Math.round((wage * (6 + gap * 0.6)) / 1000) * 1000;
 }
 
 /** Contract stage: checked against Club Reputation + Wage + 1–5 yr length. */
 export function playerWillingness(g: GameState, p: Player, buyer: Club, wage: number, years: number): { ok: boolean; reason: string } {
   const current = p.clubId ? g.clubs[p.clubId] : null;
   const curRep = current ? current.reputation : 10;
-  const demand = demandedWage(p, buyer);
+  const demand = demandedWage(p, buyer, g);
   const ambition = p.ca >= 70 ? 1.15 : 1;
   const repGap = curRep - buyer.reputation;
+  const qualityGap = p.ca - avgCa(g, buyer);
+  if (!current && qualityGap > 12 && buyer.reputation < 55 && p.age < 31) {
+    return { ok: false, reason: `${p.lastName} is holding out for a bigger club. He is well above your level.` };
+  }
   let need = demand * ambition * (repGap > 0 ? 1 + repGap / 60 : 1);
   if (p.age >= 30 && years >= 3) need *= 0.92;
   if (p.age <= 23 && years >= 4) need *= 1.05;
@@ -76,9 +95,15 @@ export function windowFor(mw: number): 'SUMMER' | 'WINTER' | 'CLOSED' {
   return 'CLOSED';
 }
 
+const URGENT_KINDS: FaxMessage['kind'][] = ['INCOMING_BID', 'TRADE_PROPOSAL', 'TERMINATION', 'JOB_OFFER'];
+
 export function fax(g: GameState, f: Omit<FaxMessage, 'id' | 'season' | 'week' | 'read' | 'resolved'> & { resolved?: boolean }): FaxMessage {
   const m: FaxMessage = { id: nextId(g, 'f'), season: g.season.year, week: g.season.matchweek, read: false, resolved: f.resolved ?? false, ...f };
   g.faxes.unshift(m);
+  // urgent paperwork rings the fax machine and opens it on the manager's desk
+  const urgent = f.urgent ?? (!m.resolved && URGENT_KINDS.includes(m.kind));
+  m.urgent = urgent;
+  if (urgent && g.urgentFaxIds && !g.urgentFaxIds.includes(m.id)) g.urgentFaxIds.push(m.id);
   if (g.faxes.length > 70) {
     const keep = g.faxes.filter((x, i) => i < 50 || !x.resolved);
     g.faxes = keep.slice(0, 80);
@@ -160,6 +185,16 @@ export function resolveOutgoingBid(g: GameState, rng: Rng, bid: TransferBid): vo
     }
   }
   const clause = p.contract.releaseClause;
+  const rank = seller.playerIds.map((id) => g.players[id]).filter(Boolean).sort((a, b) => b.ca - a.ca).findIndex((x) => x.id === p.id);
+  const keyMan = rank >= 0 && rank < 3 && buyer.reputation < seller.reputation;
+  if (keyMan && !(clause !== null && bid.fee >= clause) && effectiveFee < asking * 1.35) {
+    bid.status = 'REJECTED';
+    fax(g, {
+      kind: 'BID_RESPONSE', from: seller.name, title: `NOT FOR SALE: ${fullName(p)}`, playerId: p.id, bidId: bid.id, resolved: true,
+      body: `${fullName(p)} is one of our most important players and we are not selling him to a smaller club. ${effectiveFee >= asking ? 'Not at that price, anyway.' : 'Your offer does not come close.'}`,
+    });
+    return;
+  }
   if ((clause !== null && bid.fee >= clause) || effectiveFee >= asking) {
     bid.status = 'ACCEPTED';
     bid.note = tradeNote;
@@ -313,9 +348,13 @@ export function signFreeAgent(g: GameState, clubId: string, playerId: string, wa
   if (!will.ok) return { ok: false, message: will.reason };
   const cap = canAffordWage(g, club, wage);
   if (!cap.ok) return { ok: false, message: cap.message };
+  const bonus = signingBonus(g, p, club, wage);
+  if (club.finances.bank < bonus) return { ok: false, message: `His agent wants a ${fmtMoney(bonus)} signing bonus. You can't cover it.` };
   movePlayer(g, p, clubId);
   p.contract = { wage, yearsLeft: years, releaseClause: null };
-  return { ok: true, message: `${fullName(p)} signs on a free (${fmtMoney(wage)}/wk, ${years} yr).` };
+  club.finances.bank -= bonus;
+  club.finances.ledger.transfers += bonus;
+  return { ok: true, message: `${fullName(p)} signs on a free (${fmtMoney(wage)}/wk, ${years} yr, ${fmtMoney(bonus)} signing bonus).` };
 }
 
 /* ------------------------- Loan out own kids ------------------------- */
@@ -394,7 +433,8 @@ export function releasePlayer(g: GameState, playerId: string): { ok: boolean; me
 /* ------------------------- AI bids for the user's players ------------------------- */
 
 export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void {
-  if (!windowOpen(g) || g.season.matchweek <= 2 || !rng.chance(0.3)) return;
+  if (!windowOpen(g) || g.season.matchweek <= 2 || !rng.chance(0.24)) return;
+  if (g.bids.some((b) => b.direction === 'INCOMING' && b.status === 'PENDING')) return;
   const user = g.clubs[userClubId];
   const squad = user.playerIds.map((id) => g.players[id]).filter((p) => p && !p.loanFromClubId);
   if (squad.length < 18) return;
@@ -403,7 +443,11 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
   const buyers = Object.values(g.clubs).filter((c) => c.id !== userClubId && (c.tier < user.tier || c.reputation > user.reputation + 8) && c.finances.bank > valuePlayer(target));
   if (buyers.length === 0) return;
   const buyer = rng.pick(buyers);
-  let fee = Math.round(valuePlayer(target) * rng.range(0.85, 1.35) * (isForeignSale(user, buyer) ? COUNTRIES[user.country].foreignFeeMult : 1) / 5000) * 5000;
+  const base = valuePlayer(target) * (isForeignSale(user, buyer) ? COUNTRIES[user.country].foreignFeeMult : 1);
+  // clubs open low and keep a private ceiling — richer, bigger clubs stretch further
+  let fee = Math.round(base * rng.range(0.72, 1.05) / 5000) * 5000;
+  const reach = 1.1 + Math.min(0.45, (buyer.reputation - user.reputation) / 120) + rng.range(0, 0.25);
+  const walkAway = Math.min(buyer.finances.bank * 0.6, Math.round(base * reach / 5000) * 5000);
   const clause = target.contract.releaseClause;
   if (clause !== null && rng.chance(0.22) && buyer.finances.bank > clause) fee = clause;
   if (clause !== null && fee >= clause) {
@@ -414,7 +458,7 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
     movePlayer(g, target, buyer.id);
     target.contract = { wage: Math.round(target.contract.wage * 1.6), yearsLeft: 4, releaseClause: null };
     fax(g, {
-      kind: 'INCOMING_BID', from: buyer.name, title: `CLAUSE TRIGGERED: ${fullName(target)}`, playerId: target.id, resolved: true,
+      kind: 'INCOMING_BID', from: buyer.name, title: `CLAUSE TRIGGERED: ${fullName(target)}`, playerId: target.id, resolved: true, urgent: true,
       body: `${buyer.name} have met the ${fmtMoney(clause)} release clause. ${fullName(target)} has left the club. Nothing could be done.`,
     });
     newsTransfer(g, rng, target, user, buyer, fee, 'CLAUSE');
@@ -424,12 +468,49 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
     id: nextId(g, 'b'), type: 'TRANSFER', direction: 'INCOMING', playerId: target.id, buyerClubId: buyer.id, sellerClubId: userClubId,
     fee, wage: Math.round(target.contract.wage * 1.4), years: 3, includePlayerId: null, loanWageShare: 0, status: 'PENDING',
     counterFee: null, resolveWeek: g.season.matchweek + 1, season: g.season.year, note: '',
+    walkAway: Math.max(fee, walkAway), rounds: 0,
   };
   g.bids.push(bid);
   fax(g, {
     kind: 'INCOMING_BID', from: buyer.name, title: `BID RECEIVED: ${fullName(target)}`, playerId: target.id, bidId: bid.id, resolved: false,
-    body: `${buyer.name} offer ${fmtMoney(fee)} for ${fullName(target)} (valued ~${fmtMoney(valuePlayer(target))}). Offer stands until next turn.`,
+    body: `${buyer.name} offer ${fmtMoney(fee)} for ${fullName(target)} (valued ~${fmtMoney(valuePlayer(target))}). Accept, reject, or name your price. Offer stands until next turn.`,
   });
+}
+
+/**
+ * Name your price. Within their ceiling they agree on the spot; a little over
+ * it and they come back with a final figure; too greedy and they walk.
+ */
+export function counterIncomingBid(g: GameState, bidId: string, ask: number): { ok: boolean; message: string } {
+  const bid = g.bids.find((b) => b.id === bidId);
+  if (!bid || bid.status !== 'PENDING' || bid.direction !== 'INCOMING') return { ok: false, message: 'Offer expired.' };
+  const p = g.players[bid.playerId];
+  const buyer = g.clubs[bid.buyerClubId];
+  ask = Math.round(ask / 5000) * 5000;
+  if (ask <= bid.fee) return answerIncomingBid(g, bidId, true);
+  const ceiling = bid.walkAway ?? bid.fee;
+  bid.rounds = (bid.rounds ?? 0) + 1;
+  resolveFaxesFor(g, bid.id);
+  if (ask <= ceiling) {
+    bid.fee = ask;
+    return answerIncomingBid(g, bidId, true);
+  }
+  if (bid.rounds >= 2 || ask > ceiling * 1.35) {
+    bid.status = 'REJECTED';
+    fax(g, {
+      kind: 'BID_RESPONSE', from: buyer.name, title: `TALKS OFF: ${fullName(p)}`, playerId: p.id, bidId: bid.id, resolved: true, urgent: false,
+      body: `${fmtMoney(ask)} for ${fullName(p)}? We are not paying that. We have ended our interest.`,
+    });
+    return { ok: false, message: `${buyer.name} walk away from talks.` };
+  }
+  const final = Math.round(Math.min(ceiling, (bid.fee + ask) / 2 + (ceiling - bid.fee) * 0.3) / 5000) * 5000;
+  bid.fee = Math.max(bid.fee + 5000, final);
+  bid.resolveWeek = g.season.matchweek + 1;
+  fax(g, {
+    kind: 'INCOMING_BID', from: buyer.name, title: `IMPROVED BID: ${fullName(p)}`, playerId: p.id, bidId: bid.id, resolved: false, urgent: false,
+    body: `We can't meet ${fmtMoney(ask)}. Our final offer for ${fullName(p)} is ${fmtMoney(bid.fee)}. Take it or leave it.`,
+  });
+  return { ok: true, message: `${buyer.name} come back with ${fmtMoney(bid.fee)}.` };
 }
 
 export function answerIncomingBid(g: GameState, bidId: string, accept: boolean): { ok: boolean; message: string } {

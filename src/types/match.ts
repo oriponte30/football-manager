@@ -37,6 +37,7 @@ export type MatchEventType =
   | 'GOAL'
   | 'INJURY'
   | 'SUBSTITUTION'
+  | 'TACTICAL'
   | 'HALF_TIME'
   | 'FULL_TIME'
   | 'PENALTY_SHOOTOUT';

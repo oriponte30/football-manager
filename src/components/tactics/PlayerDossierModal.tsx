@@ -5,7 +5,7 @@ import { useGame, useUserClub, Modal, StatBar, MoraleIcon, FitnessBar, FormDots,
 import { SEVERITY_LABEL } from '../../data/injuries';
 import { OUTFIELD_STATS, GK_STATS, MORALE_LABELS, type IndividualTrainingFocus, type StatKey } from '../../types/player';
 import { avgRating, fullName, moraleLevel } from '../../engine/ratings';
-import { valuePlayer, demandedWage, renewalDemand, windowOpen } from '../../engine/transferEngine';
+import { valuePlayer, demandedWage, renewalDemand, windowOpen, signingBonus } from '../../engine/transferEngine';
 import { fmtMoney } from '../../engine/financeEngine';
 import { statRange } from '../../engine/scoutingEngine';
 
@@ -169,7 +169,7 @@ function BidDesk({ playerId, scouting, hasReport }: { playerId: string; scouting
   const p = g.players[playerId];
   const [type, setType] = useState<'TRANSFER' | 'LOAN'>('TRANSFER');
   const [fee, setFee] = useState(valuePlayer(p));
-  const [wage, setWage] = useState(demandedWage(p, club));
+  const [wage, setWage] = useState(demandedWage(p, club, g));
   const [years, setYears] = useState(3);
   const [include, setInclude] = useState(false);
   const [incId, setIncId] = useState('');
@@ -221,11 +221,11 @@ function FreeAgentDesk({ playerId, scouting, hasReport }: { playerId: string; sc
   const club = useUserClub();
   const s = useGameStore();
   const p = g.players[playerId];
-  const [wage, setWage] = useState(demandedWage(p, club));
+  const [wage, setWage] = useState(demandedWage(p, club, g));
   const [years, setYears] = useState(p.age >= 32 ? 1 : 2);
   return (
     <div className="paper p-3 flex flex-wrap items-center gap-3">
-      <span className="font-bold">Free agent — $0 fee, wages only</span>
+      <span className="font-bold">Free agent — no fee · signing bonus {fmtMoney(signingBonus(g, p, club, wage))}</span>
       <button className="btn btn-sm" disabled={scouting} onClick={() => s.scout(p.id)}>{scouting ? 'SCOUTING…' : hasReport ? 'RE-SCOUT' : 'SCOUT'}</button>
       <label>Wage $<input type="number" className="desk-input w-24 ml-1" step={50} value={wage} onChange={(e) => setWage(Number(e.target.value))} />/wk</label>
       <select className="desk-input" value={years} onChange={(e) => setYears(Number(e.target.value))}>{[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y} yr</option>)}</select>

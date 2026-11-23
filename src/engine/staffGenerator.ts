@@ -6,6 +6,8 @@ import { COUNTRIES } from '../data/countries';
 import { clamp, type Rng } from './rng';
 import { nextId } from './ids';
 import { starsFromInternal } from './ratings';
+import { fmtMoney } from './financeEngine';
+import type { Club } from '../types/club';
 
 /** Staff ability is stored 10..50, snapped to 5 (0.5★) steps. */
 export function snapStaff(v: number): number {
@@ -14,7 +16,37 @@ export function snapStaff(v: number): number {
 
 export function staffWage(ability: number, country: CountryCode): number {
   const stars = starsFromInternal(ability);
-  return Math.round((350 * Math.pow(1.85, stars - 1) * COUNTRIES[country].wageMult) / 10) * 10;
+  return Math.round((450 * Math.pow(2.3, stars - 1) * COUNTRIES[country].wageMult) / 10) * 10;
+}
+
+/** The best staff a club can attract: reputation and division set the ceiling. */
+export function staffCeiling(club: Club): number {
+  return Math.min(5, 1.5 + club.reputation / 28 + (club.tier === 1 ? 0.5 : 0));
+}
+
+export type StaffInterest =
+  | { kind: 'KEEN'; wage: number; fee: number; payoff: number }
+  | { kind: 'PREMIUM'; wage: number; fee: number; payoff: number }
+  | { kind: 'REFUSES'; reason: string };
+
+/**
+ * Would this person come? Within the club's ceiling they sign for their usual
+ * wage; up to half a star above it they want a 60% premium; beyond that they
+ * won't take the call. The fee is a signing-on payment (16 weeks' wages),
+ * plus the departing incumbent's pay-off (8 weeks).
+ */
+export function staffInterest(g: GameState, club: Club, s: StaffMember): StaffInterest {
+  const stars = starsFromInternal(s.ability);
+  const cap = staffCeiling(club);
+  const oldId = club.staff[s.role];
+  const old = oldId ? g.staff[oldId] : null;
+  const payoff = old ? old.wage * 8 : 0;
+  if (stars > cap + 0.5) {
+    return { kind: 'REFUSES', reason: stars >= 4.5 ? 'Laughs down the phone. He only talks to the big clubs.' : 'Not interested in a project at your level.' };
+  }
+  const premium = stars > cap;
+  const wage = Math.round((s.wage * (premium ? 1.6 : 1)) / 10) * 10;
+  return { kind: premium ? 'PREMIUM' : 'KEEN', wage, fee: wage * 16, payoff };
 }
 
 export function generateStaff(g: GameState, rng: Rng, role: StaffRole, ability: number, country: CountryCode, clubId: string | null): StaffMember {
@@ -75,17 +107,20 @@ export function hireStaff(g: GameState, clubId: string, staffId: string): { ok: 
   const s = g.staff[staffId];
   const club = g.clubs[clubId];
   if (!s || s.clubId) return { ok: false, message: 'Not available.' };
-  const fee = s.wage * 4;
-  if (club.finances.bank < fee) return { ok: false, message: 'Cannot afford the signing-on fee.' };
+  const it = staffInterest(g, club, s);
+  if (it.kind === 'REFUSES') return { ok: false, message: `${s.name}: ${it.reason}` };
+  const total = it.fee + it.payoff;
+  if (club.finances.bank < total) return { ok: false, message: `You need ${fmtMoney(total)} for the signing-on fee${it.payoff ? ' and the pay-off' : ''}.` };
   const oldId = club.staff[s.role];
   if (oldId && g.staff[oldId]) {
     g.staff[oldId].clubId = null;
     g.staffMarketIds.push(oldId);
   }
+  s.wage = it.wage;
   club.staff[s.role] = s.id;
   s.clubId = clubId;
   g.staffMarketIds = g.staffMarketIds.filter((x) => x !== staffId);
-  club.finances.bank -= fee;
-  club.finances.ledger.staff += fee;
-  return { ok: true, message: `${s.name} hired (${starsFromInternal(s.ability)}★). Signing-on fee ${fee.toLocaleString()}.` };
+  club.finances.bank -= total;
+  club.finances.ledger.staff += total;
+  return { ok: true, message: `${s.name} hired (${starsFromInternal(s.ability)}★) on ${fmtMoney(it.wage)}/wk. Fees paid: ${fmtMoney(total)}.` };
 }

@@ -14,6 +14,9 @@ import { createRng, clamp, type Rng } from './rng';
 import { nextId } from './ids';
 import { simulateMatch, type TeamSheet } from './matchEngine';
 import { fillLineup, preferredRoles, sanitiseRoles, squadStrength } from './lineup';
+import { afterMatchFamiliarity, initFamiliarity, matchFamiliarity } from './familiarityEngine';
+import { afterMatchweek } from './weekEngine';
+import { refreshShortlist } from './shortlistEngine';
 import { applyResultToTable, emptyRow, resolveShadowLeague, sortedTable } from './shadowLeagueEngine';
 import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression } from './progressionEngine';
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
@@ -134,8 +137,9 @@ export function buildSheet(g: GameState, club: Club, isUser: boolean, strengthDi
   }
   const roles = sanitiseRoles(formation, club.tactics.roles);
   const slots = FORMATIONS[formation].slots;
+  const instr = club.tactics.instructions ?? [];
   const starters = sel.lineup
-    .map((id, i) => (id ? { player: g.players[id], slot: slots[i].pos, role: roles[i] } : null))
+    .map((id, i) => (id ? { player: g.players[id], slot: slots[i].pos, role: roles[i], instruction: isUser ? instr[i] ?? null : null } : null))
     .filter((x): x is NonNullable<typeof x> => x !== null);
   let dials: TeamDials = club.tactics.dials;
   if (!isUser) {
@@ -144,8 +148,9 @@ export function buildSheet(g: GameState, club: Club, isUser: boolean, strengthDi
   }
   return {
     physioStars: staffStarsOf(g, club.id, 'PHYSIO'),
+    autoManage: !isUser,
     clubId: club.id, name: club.name, formation, dials,
-    familiarity: isUser ? club.familiarity : 85,
+    familiarity: isUser ? matchFamiliarity(club) : 85,
     atmosphere: club.teamAtmosphere, homeBoost: club.homeBoost, fanInterest: club.fanInterest,
     starters, bench: bench.map((id) => g.players[id]).filter(Boolean),
   };
@@ -253,7 +258,7 @@ function applyMatchEffects(g: GameState, wc: WeekCtx, r: MatchResult, home: Club
     const won = (home.id === userId && resH === 'W') || (away.id === userId && resA === 'W');
     if (won) g.manager.wins++;
     const userClub = g.clubs[userId];
-    userClub.familiarity = clamp(userClub.familiarity + 9 + staffStarsOf(g, userId, 'HEAD_COACH') * 3, 0, 100);
+    afterMatchFamiliarity(userClub, staffStarsOf(g, userId, 'HEAD_COACH'));
     const res = home.id === userId ? resH : resA;
     const b = userClub.board;
     const delta = res === 'W' ? 2.2 : res === 'L' ? -2.0 * b.patience : 0.3;
@@ -447,7 +452,7 @@ export function acceptJob(g: GameState, offerId: string): { ok: boolean; message
   }
   g.manager.clubId = club.id;
   club.board.value = offer.isLifeline ? 52 : 62;
-  club.familiarity = 70;
+  initFamiliarity(club, 70);
   const sel = fillLineup(g, club, club.tactics.formation);
   club.tactics.lineup = sel.lineup;
   club.tactics.bench = sel.bench;
@@ -457,6 +462,10 @@ export function acceptJob(g: GameState, offerId: string): { ok: boolean; message
   g.dilemma = null;
   for (const f of g.faxes) if (f.kind === 'JOB_OFFER' || f.kind === 'TERMINATION') f.resolved = true;
   g.status = g.season.matchweek > SEASON_WEEKS ? 'SEASON_END' : 'PLAYING';
+  g.phase = 'PREP';
+  g.watchedResults = g.lastUserResults.map((r) => r.id);
+  const srng = createRng((g.rngState ^ 0x51ab) >>> 0);
+  refreshShortlist(g, srng, true);
   newsManager(g, club, 'HIRED');
   return { ok: true, message: `Welcome to ${club.name}.` };
 }
@@ -542,6 +551,7 @@ export function advanceMatchweek(g: GameState): void {
     }
     expireIncomingBids(g);
     aiIncomingBids(g, rng, userId);
+    refreshShortlist(g, rng);
     maybeAiTradeFax(g, rng, userId);
     // scouting
     const ready = g.scouting.filter((s) => s.readySeason === g.season.year && s.readyWeek <= mw);
@@ -584,6 +594,7 @@ export function advanceMatchweek(g: GameState): void {
   g.season.matchweek = mw + 1;
   g.season.window = windowFor(g.season.matchweek);
   if (g.season.matchweek > SEASON_WEEKS) finalizeSeason(g, rng);
+  afterMatchweek(g, rng);
   g.rngState = rng.state;
 }
 
@@ -908,6 +919,8 @@ export function startNextSeason(g: GameState): void {
   }
   g.seasonSummary = null;
   if (g.status !== 'SACKED') g.status = 'PLAYING';
+  g.phase = 'PREP';
+  g.watchedResults = [];
   g.rngState = rng.state;
   void valuePlayer;
 }

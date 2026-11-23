@@ -3,6 +3,7 @@ import { X, Printer } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, Modal } from '../ui';
 import type { FaxMessage } from '../../types/transfers';
+import { fmtMoney } from '../../engine/financeEngine';
 
 const KIND_LABEL: Record<FaxMessage['kind'], string> = {
   SCOUT_REPORT: 'SCOUT', BID_RESPONSE: 'BID', INCOMING_BID: 'OFFER', LOAN_RESPONSE: 'LOAN', TRADE_PROPOSAL: 'SWAP', JOB_OFFER: 'JOB',
@@ -13,7 +14,10 @@ const KIND_LABEL: Record<FaxMessage['kind'], string> = {
 export default function FaxInboxModal() {
   const g = useGame();
   const s = useGameStore();
-  const [selId, setSelId] = useState<string | null>(g.faxes.find((f) => !f.resolved)?.id ?? g.faxes[0]?.id ?? null);
+  const [selId, setSelId] = useState<string | null>(() => {
+    const focus = s.faxFocusId && g.faxes.find((f) => f.id === s.faxFocusId);
+    return focus ? focus.id : g.faxes.find((f) => !f.resolved)?.id ?? g.faxes[0]?.id ?? null;
+  });
   const sel = g.faxes.find((f) => f.id === selId) ?? null;
   const open = (f: FaxMessage) => {
     setSelId(f.id);
@@ -93,7 +97,8 @@ function FaxSheet({ f }: { f: FaxMessage }) {
         </>}
         {!f.resolved && f.kind === 'LOAN_RESPONSE' && bid?.status === 'ACCEPTED' && <button className="btn btn-green" onClick={() => s.finalizeBid(bid.id, false)}>CONFIRM LOAN</button>}
         {!f.resolved && f.kind === 'INCOMING_BID' && bid && bid.status === 'PENDING' && <>
-          <button className="btn btn-green" onClick={() => s.answerIncoming(bid.id, true)}>ACCEPT & SELL</button>
+          <button className="btn btn-green" onClick={() => s.answerIncoming(bid.id, true)}>ACCEPT {fmtMoney(bid.fee)}</button>
+          <CounterAsk key={`${bid.id}-${bid.fee}`} fee={bid.fee} onAsk={(v) => s.counterIncoming(bid.id, v)} />
           <button className="btn btn-red" onClick={() => s.answerIncoming(bid.id, false)}>REJECT</button>
         </>}
         {!f.resolved && f.kind === 'TRADE_PROPOSAL' && <>
@@ -113,5 +118,16 @@ function FaxSheet({ f }: { f: FaxMessage }) {
         {!f.resolved && (f.kind === 'BID_RESPONSE' || f.kind === 'LOAN_RESPONSE') && bid && bid.status !== 'ACCEPTED' && bid.status !== 'COUNTERED' && <button className="btn btn-sm" onClick={() => s.resolveFax(f.id)}>FILE IT</button>}
       </div>
     </div>
+  );
+}
+
+function CounterAsk({ fee, onAsk }: { fee: number; onAsk: (v: number) => void }) {
+  const [ask, setAsk] = useState(Math.round((fee * 1.3) / 5000) * 5000);
+  return (
+    <span className="inline-flex items-center gap-1 border border-black/30 px-2">
+      <span className="text-sm">ASK $</span>
+      <input type="number" className="desk-input w-28" step={5000} value={ask} onChange={(e) => setAsk(Number(e.target.value))} />
+      <button className="btn btn-amber btn-sm" onClick={() => onAsk(ask)}>COUNTER</button>
+    </span>
   );
 }

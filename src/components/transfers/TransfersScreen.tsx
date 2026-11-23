@@ -1,21 +1,23 @@
 import { useMemo, useState } from 'react';
 import { Search, Binoculars } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
-import { useGame, useUserClub, PosTag, ovrRead, paRead, Stars, staffStars } from '../ui';
+import { useGame, useUserClub, PosTag, ovrRead, paRead, Stars, staffStars, NationTag } from '../ui';
+import { PlayerFace } from '../Face';
+import { liveShortlist } from '../../engine/shortlistEngine';
 import CRTMonitor from '../layout/CRTMonitor';
 import YouthIntakeFolder from './YouthIntakeFolder';
-import { marketList } from '../../engine/transferEngine';
+import { marketList, valuePlayer } from '../../engine/transferEngine';
 import { fmtMoney } from '../../engine/financeEngine';
 import { fullName } from '../../engine/ratings';
 
-type Tab = 'TRANSFER' | 'FREE' | 'LOAN' | 'BIDS' | 'SCOUTING' | 'YOUTH';
+type Tab = 'SHORTLIST' | 'TRANSFER' | 'FREE' | 'LOAN' | 'BIDS' | 'SCOUTING' | 'YOUTH';
 const POS = ['ALL', 'GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST'];
 
 export default function TransfersScreen() {
   const g = useGame();
   const club = useUserClub();
-  const [tab, setTab] = useState<Tab>(g.pendingYouth.length ? 'YOUTH' : 'TRANSFER');
-  const tabs: [Tab, string][] = [['TRANSFER', 'Transfer market'], ['FREE', `Free agents (${g.freeAgentIds.length})`], ['LOAN', 'Loans'], ['BIDS', 'Faxed bids'], ['SCOUTING', `Scouting (${g.scouting.length})`], ['YOUTH', `Youth intake (${g.pendingYouth.length})`]];
+  const [tab, setTab] = useState<Tab>(g.pendingYouth.length ? 'YOUTH' : 'SHORTLIST');
+  const tabs: [Tab, string][] = [['SHORTLIST', `Scout's shortlist (${liveShortlist(g).length})`], ['TRANSFER', 'Transfer market'], ['FREE', `Free agents (${g.freeAgentIds.length})`], ['LOAN', 'Loans'], ['BIDS', 'Faxed bids'], ['SCOUTING', `Scouting (${g.scouting.length})`], ['YOUTH', `Youth intake (${g.pendingYouth.length})`]];
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
@@ -24,6 +26,7 @@ export default function TransfersScreen() {
           WINDOW: <span className={g.season.window === 'CLOSED' ? 'text-red-300' : 'text-green-300'}>{g.season.window}</span> · BANK {fmtMoney(club.finances.bank)} · SCOUT <Stars value={staffStars(g, club, 'CHIEF_SCOUT')} size={12} />
         </span>
       </div>
+      {tab === 'SHORTLIST' && <Shortlist />}
       {(tab === 'TRANSFER' || tab === 'FREE' || tab === 'LOAN') && <Market kind={tab} />}
       {tab === 'BIDS' && <Bids />}
       {tab === 'SCOUTING' && <Scouting />}
@@ -53,8 +56,8 @@ function Market({ kind }: { kind: 'TRANSFER' | 'FREE' | 'LOAN' }) {
         {kind !== 'FREE' && <label>MAX VALUE <select className="bg-navy-900 border border-amber-crt/50" value={maxVal} onChange={(e) => setMaxVal(Number(e.target.value))}>{[0, 100000, 250000, 500000, 1000000, 3000000].map((v) => <option key={v} value={v}>{v ? fmtMoney(v) : 'ANY'}</option>)}</select></label>}
         {kind !== 'FREE' && <div className="flex">{(['ALL', 'HOME', 'ABROAD'] as const).map((s) => <button key={s} className={`px-2 border border-amber-crt/50 ${scope === s ? 'bg-amber-crt text-navy-900' : ''}`} onClick={() => setScope(s)}>{s}</button>)}</div>}
       </div>
-      <div className="grid grid-cols-[34px_1fr_1fr_36px_70px_70px_80px_90px] t-dim text-base">
-        <span>POS</span><span>PLAYER</span><span>CLUB</span><span>AGE</span><span>OVR</span><span>POT</span><span>VALUE</span><span />
+      <div className="grid grid-cols-[30px_34px_1fr_1fr_36px_70px_70px_80px_90px] t-dim text-base gap-x-1">
+        <span /><span>POS</span><span>PLAYER</span><span>CLUB</span><span>AGE</span><span>OVR</span><span>POT</span><span>VALUE</span><span />
       </div>
       <div className="max-h-[560px] overflow-y-auto crt-scroll">
         {filtered.map((m) => {
@@ -63,7 +66,8 @@ function Market({ kind }: { kind: 'TRANSFER' | 'FREE' | 'LOAN' }) {
           const pa = paRead(g, p, club);
           const scouting = g.scouting.some((s) => s.playerId === p.id);
           return (
-            <div key={p.id} className="crt-row grid grid-cols-[34px_1fr_1fr_36px_70px_70px_80px_90px] items-center">
+            <div key={p.id} className="crt-row grid grid-cols-[30px_34px_1fr_1fr_36px_70px_70px_80px_90px] items-center gap-x-1 py-[1px]">
+              <PlayerFace p={p} size={26} shirt={p.clubId ? g.clubs[p.clubId].colors[0] : '#555'} />
               <span><PosTag pos={p.position} /></span>
               <button className="text-left truncate t-white hover:underline" onClick={() => openDossier(p.id)}>{fullName(p)}</button>
               <span className="truncate t-dim">{m.clubName}{p.clubId && g.clubs[p.clubId].country !== g.activeCountry ? ` (${g.clubs[p.clubId].country})` : ''}</span>
@@ -141,6 +145,52 @@ function Scouting() {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The Chief Scout's standing list: refreshed every four weeks, better scouts find more (and better) names. */
+function Shortlist() {
+  const g = useGame();
+  const club = useUserClub();
+  const { openDossier, scout } = useGameStore();
+  const list = liveShortlist(g);
+  const stars = staffStars(g, club, 'CHIEF_SCOUT');
+  const next = Math.max(0, 4 - (g.season.matchweek - (g.shortlist?.week ?? 0)));
+  return (
+    <div className="manila p-4 pt-6 mt-5">
+      <div className="manila-tab">CHIEF SCOUT · SHORTLIST</div>
+      <div className="flex flex-wrap justify-between items-baseline gap-2">
+        <div className="font-type text-lg">Players we can realistically get, boss.</div>
+        <div className="text-sm">Scout <Stars value={stars} size={12} /> · {list.length} names · new list in {next || 'under a'} week{next === 1 ? '' : 's'}</div>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+        {list.map((p) => {
+          const o = ovrRead(g, p, club.id);
+          const pa = paRead(g, p, club);
+          const owner = p.clubId ? g.clubs[p.clubId] : null;
+          const scouting = g.scouting.some((x) => x.playerId === p.id);
+          const note = g.shortlist?.notes?.[p.id];
+          return (
+            <div key={p.id} className="paper p-2 flex gap-2 items-start">
+              <PlayerFace p={p} size={56} shirt={owner ? owner.colors[0] : '#666'} />
+              <div className="min-w-0 flex-1 text-sm">
+                <button className="font-bold truncate block text-left hover:underline w-full" onClick={() => openDossier(p.id)}>{fullName(p)}</button>
+                <div className="flex items-center gap-1 flex-wrap"><PosTag pos={p.position} /> <NationTag code={p.nationality} /> <span>{p.age}</span></div>
+                <div className="truncate opacity-80">{owner ? `${owner.name}${owner.country !== g.activeCountry ? ` (${owner.country})` : ''}` : 'Free agent'}</div>
+                <div>OVR <b className={g.scoutReports[p.id] ? 'text-green-800' : ''}>{o.text}</b> · POT {pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'} · {owner ? fmtMoney(valuePlayer(p)) : 'no fee'}</div>
+                {note && <div className="handwritten leading-5">{note}</div>}
+                <div className="flex gap-1 mt-1">
+                  <button className="btn btn-sm" disabled={scouting || !!g.scoutReports[p.id]} onClick={() => scout(p.id)}>{scouting ? 'SCOUTING…' : g.scoutReports[p.id] ? 'SCOUTED' : 'SCOUT'}</button>
+                  <button className="btn btn-sm btn-amber" onClick={() => openDossier(p.id)}>{owner ? 'BID' : 'OFFER'}</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {list.length === 0 && <div className="text-sm">The scout is still compiling names. Check back next week.</div>}
+      </div>
+      <div className="text-xs mt-2 opacity-70">A better Chief Scout brings more names, closer to what the squad needs, and spots hidden gems among the youngsters.</div>
     </div>
   );
 }

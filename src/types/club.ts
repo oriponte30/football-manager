@@ -1,6 +1,6 @@
 import type { CountryCode, Tier } from './world';
 import type { StaffRole } from './staff';
-import type { TacticalSetup } from './tactics';
+import type { TacticalSetup, FormationId, TeamDials } from './tactics';
 
 export type ArchetypeId = 'FALLEN_GIANT' | 'TINY_UNDERDOG' | 'YOUTH_GAMBLE' | 'VOLATILE_OWNER' | 'CULT_CLUB';
 
@@ -63,7 +63,12 @@ export interface Club {
   playerIds: string[];
   staff: Record<StaffRole, string | null>;
   tactics: TacticalSetup;
+  /** familiarity of the current formation (mirrors familiarityByFormation) */
   familiarity: number;
+  /** tactical familiarity per formation 0..100 — only changes when matches are played */
+  familiarityByFormation: Partial<Record<FormationId, number>>;
+  /** dials used in the last played match (unplayed tweaks are free to undo) */
+  lastPlayedDials: TeamDials | null;
   teamAtmosphere: number;
   colors: [string, string];
   rivalId: string | null;

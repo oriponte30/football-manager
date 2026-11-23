@@ -32,7 +32,7 @@ export default function PostMatchStats({ results }: { results: MatchResult[] }) 
       <span className="flex gap-2">{results.map((x, i) => <button key={x.id} className={i === idx ? 'underline' : ''} onClick={() => setIdx(i)}>{x.competition}</button>)}</span>
     ) : undefined}>
       <div className="text-center text-2xl t-white">
-        {H.name} <span className="t-green">{r.homeGoals}-{r.awayGoals}</span> {A.name}
+        {H.name} <span className={H.id === me ? 't-green' : 't-red'}>{r.homeGoals}</span>-<span className={A.id === me ? 't-green' : 't-red'}>{r.awayGoals}</span> {A.name}
         {r.penalties && <span className="t-cyan text-lg"> (pens {r.penalties.home}-{r.penalties.away})</span>}
       </div>
       <div className="mt-2 space-y-[2px]">

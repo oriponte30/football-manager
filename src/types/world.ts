@@ -4,6 +4,7 @@ import type { StaffMember } from './staff';
 import type { MatchResult, CompetitionKind } from './match';
 import type { NewsItem } from './news';
 import type { FaxMessage, TransferBid, ScoutAssignment, ScoutReport, JobOffer, Dilemma } from './transfers';
+import type { DrillKind } from '../data/drills';
 
 export type CountryCode = 'ENG' | 'ESP' | 'ITA' | 'GER' | 'FRA';
 export const COUNTRY_CODES: CountryCode[] = ['ENG', 'ESP', 'ITA', 'GER', 'FRA'];
@@ -129,6 +130,15 @@ export interface SeasonRecord {
 
 export type GameStatus = 'ONBOARDING' | 'PLAYING' | 'SACKED' | 'SEASON_END';
 
+/**
+ * The manager's week: PREP (pick the team, kick off) → MATCHDAY (watch the
+ * games live, one at a time, recap at full time) → DAY_AFTER (recovery,
+ * press conference, one-on-one drill) → PREP for the next matchweek.
+ */
+export type WeekPhase = 'PREP' | 'MATCHDAY' | 'DAY_AFTER';
+
+export type RecoveryChoice = 'REST' | 'BALANCED' | 'INTENSE';
+
 export interface WeekResultLine {
   fixtureId: string;
   competition: CompetitionKind;
@@ -189,4 +199,17 @@ export interface GameState {
   transferRecord: { fee: number; playerName: string; year: number } | null;
   /** de-dupe keys for one-off stories → season year they ran */
   newsKeys: Record<string, number>;
+  phase: WeekPhase;
+  /** user results already watched in full (never replayed) */
+  watchedResults: string[];
+  /** day-after press conference (null once answered / skipped) */
+  pressConference: Dilemma | null;
+  /** what has been done on the current day-after */
+  dayAfter: { recovery: RecoveryChoice | null; pressDone: boolean };
+  /** last one-on-one drill (one per week) */
+  lastDrill: { year: number; week: number; playerId: string; drill: DrillKind; gained: string } | null;
+  /** faxes that should open the fax machine on their own (urgent) */
+  urgentFaxIds: string[];
+  /** scouting department's standing shortlist of transfer targets */
+  shortlist: { ids: string[]; year: number; week: number; notes?: Record<string, string> };
 }

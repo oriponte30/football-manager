@@ -6,6 +6,7 @@ import CRTMonitor from '../layout/CRTMonitor';
 import { fmtMoney, weeklyWageBill, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
 import { STAFF_ROLES, STAFF_ROLE_LABELS, type StaffRole } from '../../types/staff';
 import { starsFromInternal } from '../../engine/ratings';
+import { staffCeiling, staffInterest } from '../../engine/staffGenerator';
 import { COUNTRIES } from '../../data/countries';
 
 const ROLE_HELP: Record<StaffRole, string> = {
@@ -127,12 +128,25 @@ export default function ClubFinancesScreen() {
                   <div className="t-dim text-base">{ROLE_HELP[role]}</div>
                   {hireRole === role && (
                     <div className="mt-1 border-t border-amber-crt/30 pt-1">
-                      {g.staffMarketIds.map((id) => g.staff[id]).filter((m) => m && m.role === role).sort((a, b) => b.ability - a.ability).map((m) => (
-                        <div key={m.id} className="flex flex-wrap items-center gap-x-3">
-                          <span className="t-white w-44 truncate">{m.name}</span><Stars value={starsFromInternal(m.ability)} size={12} /><span>AGE {m.age}</span><span>{fmtMoney(m.wage)}/wk</span>
-                          <button className="border border-amber-crt/60 px-2" disabled={club.finances.bank < m.wage * 4} onClick={() => { s.hire(m.id); setHireRole(null); }}>HIRE (fee {fmtMoney(m.wage * 4)})</button>
-                        </div>
-                      ))}
+                      <div className="t-dim text-base">Your club can attract up to about <span className="t-white">{(Math.floor(staffCeiling(club) * 2) / 2).toFixed(1)}★</span>. Better people want more money, or won't come at all. Wages come out of the weekly bill; the up-front cost is a signing-on fee plus the outgoing man's pay-off.</div>
+                      {g.staffMarketIds.map((id) => g.staff[id]).filter((m) => m && m.role === role).sort((a, b) => b.ability - a.ability).map((m) => {
+                        const it = staffInterest(g, club, m);
+                        return (
+                          <div key={m.id} className={`flex flex-wrap items-center gap-x-3 ${it.kind === 'REFUSES' ? 'opacity-50' : ''}`}>
+                            <span className="t-white w-44 truncate">{m.name}</span><Stars value={starsFromInternal(m.ability)} size={12} /><span>AGE {m.age}</span>
+                            {it.kind === 'REFUSES' ? (
+                              <span className="t-red">{it.reason}</span>
+                            ) : (
+                              <>
+                                <span className={it.kind === 'PREMIUM' ? 't-red' : ''}>{fmtMoney(it.wage)}/wk{it.kind === 'PREMIUM' ? ' (wants a premium)' : ''}</span>
+                                <button className="border border-amber-crt/60 px-2" disabled={club.finances.bank < it.fee + it.payoff} onClick={() => { s.hire(m.id); setHireRole(null); }}>
+                                  HIRE · {fmtMoney(it.fee + it.payoff)} up front
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

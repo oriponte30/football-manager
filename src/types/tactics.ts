@@ -1,4 +1,5 @@
 import type { Position } from './player';
+import type { InstructionId } from '../data/instructions';
 
 export type FormationId = '4-4-2' | '4-3-3' | '4-2-3-1' | '3-5-2' | '5-3-2';
 
@@ -56,4 +57,6 @@ export interface TacticalSetup {
   trainingFocus: TeamTrainingFocus;
   /** 2–3 tagged player ids for individual focus */
   trainingTags: string[];
+  /** per-slot individual instruction (aligned with lineup) */
+  instructions: (InstructionId | null)[];
 }
