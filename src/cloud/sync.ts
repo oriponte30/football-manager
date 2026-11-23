@@ -86,7 +86,10 @@ async function push(): Promise<void> {
   if (!supabase || !userId) return;
   if (useCloud.getState().conflict) return;
   const g = useGameStore.getState().game;
-  if (!g || !hasCareer(g)) return; // never overwrite a cloud career with an empty one
+  if (!g || !hasCareer(g)) { // never overwrite a cloud career with an empty one
+    setStatus('synced', 'Nothing to save yet. Accept a job offer to start a career first.');
+    return;
+  }
   const startedAt = Date.now();
   setStatus('syncing');
   try {
@@ -95,7 +98,7 @@ async function push(): Promise<void> {
     if (error) throw error;
     writeMeta({ syncedAt: startedAt, userId });
     useCloud.setState({ lastSync: startedAt });
-    setStatus('synced');
+    setStatus('synced', 'Saved to the cloud.');
   } catch (e) { failed(e); }
 }
 
