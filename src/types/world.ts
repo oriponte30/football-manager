@@ -208,6 +208,12 @@ export interface GameState {
   dayAfter: { recovery: RecoveryChoice | null; pressDone: boolean };
   /** last one-on-one drill (one per week) */
   lastDrill: { year: number; week: number; playerId: string; drill: DrillKind; gained: string } | null;
+  /** this week's one-on-one sessions (up to 3 players) */
+  weekDrills?: { year: number; week: number; sessions: { playerId: string; drill: DrillKind; gained: string }[] } | null;
+  /** fractional progress from one-on-one work, keyed "playerId:stat" (1.0 = +1) */
+  drillProgress?: Record<string, number>;
+  /** the Chief Scout's brief for his shortlist */
+  scoutBrief?: { focus: string; country: CountryCode | 'ANY' };
   /** faxes that should open the fax machine on their own (urgent) */
   urgentFaxIds: string[];
   /** scouting department's standing shortlist of transfer targets */

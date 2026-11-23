@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
-import { useGame, Modal } from '../ui';
+import { useGame, useUserClub, Modal, PosTag, NationTag, ovrRead, paRead } from '../ui';
+import { PlayerFace } from '../Face';
+import { valuePlayer } from '../../engine/transferEngine';
 import type { FaxMessage } from '../../types/transfers';
 import { fmtMoney } from '../../engine/financeEngine';
 
@@ -19,6 +21,9 @@ export default function FaxInboxModal() {
     return focus ? focus.id : g.faxes.find((f) => !f.resolved)?.id ?? g.faxes[0]?.id ?? null;
   });
   const sel = g.faxes.find((f) => f.id === selId) ?? null;
+  useEffect(() => {
+    if (sel && !sel.read) s.markFaxRead(sel.id);
+  }, [sel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const open = (f: FaxMessage) => {
     setSelId(f.id);
     if (!f.read) s.markFaxRead(f.id);
@@ -76,6 +81,7 @@ function FaxSheet({ f }: { f: FaxMessage }) {
       <div className="mt-2 whitespace-pre-wrap font-mono text-[15px]">
         {f.body.split('\n').map((l, i) => <div key={i} className="fax-line">{l}</div>)}
       </div>
+      <InvolvedPlayers f={f} />
       {report && (
         <div className="mt-3 font-mono text-sm grid grid-cols-2 gap-x-6">
           {Object.entries(report.statRanges).map(([k, r]) => (
@@ -86,7 +92,6 @@ function FaxSheet({ f }: { f: FaxMessage }) {
         </div>
       )}
       <div className="mt-5 flex flex-wrap gap-2">
-        {f.playerId && g.players[f.playerId] && <button className="btn btn-sm" onClick={() => { s.openDossier(f.playerId!); }}>OPEN DOSSIER</button>}
         {!f.resolved && f.kind === 'BID_RESPONSE' && (bid?.status === 'ACCEPTED' || bid?.status === 'COUNTERED') && (
           <ContractTerms key={bid.id} wage={wage} setWage={setWage} years={years} setYears={setYears} />
         )}
@@ -129,5 +134,40 @@ function CounterAsk({ fee, onAsk }: { fee: number; onAsk: (v: number) => void })
       <input type="number" className="desk-input w-28" step={5000} value={ask} onChange={(e) => setAsk(Number(e.target.value))} />
       <button className="btn btn-amber btn-sm" onClick={() => onAsk(ask)}>COUNTER</button>
     </span>
+  );
+}
+
+/** Every player a fax is about, as a clickable card: tap the name for the full dossier. */
+function InvolvedPlayers({ f }: { f: FaxMessage }) {
+  const g = useGame();
+  const club = useUserClub();
+  const openDossier = useGameStore((s) => s.openDossier);
+  const ids: { id: string; label: string }[] = [];
+  if (f.trade) {
+    ids.push({ id: f.trade.requestedPlayerId, label: 'YOU GIVE' });
+    ids.push({ id: f.trade.offeredPlayerId, label: 'YOU GET' });
+  } else if (f.playerId) ids.push({ id: f.playerId, label: f.kind === 'INCOMING_BID' ? 'THEY WANT' : f.kind === 'SCOUT_REPORT' ? 'REPORT ON' : 'PLAYER' });
+  const rows = ids.filter((x) => g.players[x.id]);
+  if (rows.length === 0) return null;
+  return (
+    <div className={`mt-3 grid gap-2 ${rows.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+      {rows.map(({ id, label }) => {
+        const p = g.players[id];
+        const owner = p.clubId ? g.clubs[p.clubId] : null;
+        const o = ovrRead(g, p, club.id);
+        const pa = paRead(g, p, club);
+        return (
+          <button key={id} className="flex gap-2 items-center text-left border border-black/30 rounded p-2 bg-white/60 hover:bg-yellow-50" onClick={() => openDossier(id)} title="Open his full dossier">
+            <PlayerFace p={p} size={48} shirt={owner ? owner.colors[0] : '#666'} />
+            <span className="min-w-0 text-sm font-mono">
+              <span className="block text-[11px] opacity-60">{label}</span>
+              <span className="block font-bold underline truncate">{p.firstName} {p.lastName}</span>
+              <span className="flex items-center gap-1 flex-wrap"><PosTag pos={p.position} /> <NationTag code={p.nationality} /> {p.age} yrs · {owner?.shortName ?? 'Free'}</span>
+              <span className="block">OVR {o.text} · POT {pa.range ? `${pa.range[0]}–${pa.range[1]}` : '??'} · {fmtMoney(valuePlayer(p))}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

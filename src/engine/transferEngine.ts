@@ -14,6 +14,7 @@ import { nextId } from './ids';
 import { wageFor } from './playerGenerator';
 import { canAffordWage, credit, fmtMoney } from './financeEngine';
 import { newsTransfer } from './newsEngine';
+import { generateScoutReport } from './scoutingEngine';
 
 const POS_VALUE: Record<string, number> = { GK: 0.8, CB: 0.95, LB: 0.9, RB: 0.9, CDM: 0.95, CM: 1, CAM: 1.1, LW: 1.08, RW: 1.08, ST: 1.18 };
 
@@ -564,6 +565,8 @@ export function maybeAiTradeFax(g: GameState, rng: Rng, userClubId: string): voi
     cashAdjustment: Math.round((v - valuePlayer(offer)) * 0.6 / 5000) * 5000,
   };
   g.aiTradeFaxesThisSeason++;
+  // they send his file with the proposal: your scout's read of him lands on your desk
+  g.scoutReports[offer.id] = generateScoutReport(g, offer, user.staff.CHIEF_SCOUT);
   fax(g, {
     kind: 'TRADE_PROPOSAL', from: partner.name, title: `SWAP PROPOSAL: ${wanted.lastName} ⇄ ${offer.lastName}`, trade, tradeId: trade.id, playerId: offer.id, resolved: false,
     body: `We propose a straight swap: your ${fullName(wanted)} (${wanted.position}) for our ${fullName(offer)} (${offer.position}, ${offer.age}).${trade.cashAdjustment > 0 ? ` We add ${fmtMoney(trade.cashAdjustment)}.` : trade.cashAdjustment < 0 ? ` You add ${fmtMoney(-trade.cashAdjustment)}.` : ''}`,

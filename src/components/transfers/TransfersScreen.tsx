@@ -3,7 +3,9 @@ import { Search, Binoculars } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, PosTag, ovrRead, paRead, Stars, staffStars, NationTag } from '../ui';
 import { PlayerFace } from '../Face';
-import { liveShortlist } from '../../engine/shortlistEngine';
+import { liveShortlist, currentBrief, briefOptionsFor, briefLevelFor, type BriefOption } from '../../engine/shortlistEngine';
+import { COUNTRIES } from '../../data/countries';
+import type { CountryCode } from '../../types/world';
 import CRTMonitor from '../layout/CRTMonitor';
 import YouthIntakeFolder from './YouthIntakeFolder';
 import { marketList, valuePlayer } from '../../engine/transferEngine';
@@ -156,14 +158,16 @@ function Shortlist() {
   const { openDossier, scout } = useGameStore();
   const list = liveShortlist(g);
   const stars = staffStars(g, club, 'CHIEF_SCOUT');
+  const pending = (g.shortlist?.week ?? 0) < 0;
   const next = Math.max(0, 4 - (g.season.matchweek - (g.shortlist?.week ?? 0)));
   return (
     <div className="manila p-4 pt-6 mt-5">
       <div className="manila-tab">CHIEF SCOUT · SHORTLIST</div>
       <div className="flex flex-wrap justify-between items-baseline gap-2">
         <div className="font-type text-lg">Players we can realistically get, boss.</div>
-        <div className="text-sm">Scout <Stars value={stars} size={12} /> · {list.length} names · new list in {next || 'under a'} week{next === 1 ? '' : 's'}</div>
+        <div className="text-sm">Scout <Stars value={stars} size={12} /> · {list.length} names · {pending ? 'new brief: names after the next matchweek' : `new list in ${next || 'under a'} week${next === 1 ? '' : 's'}`}</div>
       </div>
+      <ScoutBrief />
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
         {list.map((p) => {
           const o = ovrRead(g, p, club.id);
@@ -191,6 +195,47 @@ function Shortlist() {
         {list.length === 0 && <div className="text-sm">The scout is still compiling names. Check back next week.</div>}
       </div>
       <div className="text-xs mt-2 opacity-70">A better Chief Scout brings more names, closer to what the squad needs, and spots hidden gems among the youngsters.</div>
+    </div>
+  );
+}
+
+/** Tell the scout what to look for and where. A better scout takes a more precise brief. */
+function ScoutBrief() {
+  const g = useGame();
+  const club = useUserClub();
+  const setBrief = useGameStore((s) => s.setScoutBrief);
+  const stars = staffStars(g, club, 'CHIEF_SCOUT');
+  const { focus, country } = currentBrief(g);
+  const opts = briefOptionsFor(stars);
+  const level = briefLevelFor(stars);
+  const groups: [string, BriefOption[]][] = [
+    ['Broad', opts.filter((o) => o.level === 'BROAD')],
+    ['Bundles', opts.filter((o) => o.level === 'BUNDLE')],
+    ['Exact position', opts.filter((o) => o.level === 'EXACT')],
+  ];
+  const countries: (CountryCode | 'ANY')[] = [g.activeCountry, ...(Object.keys(COUNTRIES) as CountryCode[]).filter((c) => c !== g.activeCountry), 'ANY'];
+  return (
+    <div className="paper p-3 mt-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-bold">BRIEF</span>
+        <span className="opacity-70">{level === 'BROAD' ? 'A 1–2★ scout only takes a broad brief.' : level === 'BUNDLE' ? 'A 2.5–3.5★ scout can hunt a group of positions.' : 'A 4★+ scout will find exactly the position you ask for.'}</span>
+      </div>
+      <div className="mt-2 space-y-1">
+        {groups.filter(([, o]) => o.length > 0).map(([label, o]) => (
+          <div key={label} className="flex flex-wrap items-center gap-1">
+            <span className="w-28 text-xs uppercase opacity-60">{label}</span>
+            {o.map((x) => <button key={x.id} className={`chip ${focus.id === x.id ? 'on' : ''}`} onClick={() => setBrief(x.id, country)}>{x.label}</button>)}
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="w-28 text-xs uppercase opacity-60">Send him to</span>
+          {countries.map((c) => (
+            <button key={c} className={`chip ${country === c ? 'on' : ''}`} onClick={() => setBrief(focus.id, c)}>
+              {c === 'ANY' ? 'All five countries' : `${COUNTRIES[c].name}${c === g.activeCountry ? ' (home)' : ''}`}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

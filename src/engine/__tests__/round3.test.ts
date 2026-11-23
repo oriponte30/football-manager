@@ -7,7 +7,7 @@ import { afterMatchFamiliarity } from '../familiarityEngine';
 import { staffInterest, staffCeiling, generateStaff } from '../staffGenerator';
 import { counterIncomingBid } from '../transferEngine';
 import { startDayAfter, beginPrep, runDrill, recoverySession, markWatched } from '../weekEngine';
-import { refreshShortlist } from '../shortlistEngine';
+import { refreshShortlist, setScoutBrief, briefOptionsFor } from '../shortlistEngine';
 import type { GameState } from '../../types/world';
 
 function careerAt(seed: number, offer = 0): GameState {
@@ -114,5 +114,47 @@ describe('the manager\'s week', () => {
     refreshShortlist(g, rng, true);
     expect(g.shortlist.ids.length).toBeGreaterThan(n1);
     expect(g.shortlist.ids).not.toContain(club.playerIds[0]);
+  });
+  it('three sessions a week, one per player, and gains stay slow', () => {
+    const g = careerAt(71);
+    const club = g.clubs[g.manager.clubId!];
+    const rng = createRng(4);
+    const kid = club.playerIds.map((id) => g.players[id]).filter((p) => p.position !== 'GK').sort((a, b) => a.age - b.age)[0];
+    const others = club.playerIds.filter((id) => id !== kid.id && g.players[id].position !== 'GK');
+    const start = kid.stats.passing;
+    for (let w = 1; w <= 30; w++) {
+      g.season.matchweek = w;
+      kid.fitness = 100;
+      expect(runDrill(g, rng, kid.id, 'PASSING').ok || kid.injuryWeeks > 0).toBe(true);
+      kid.injuryWeeks = 0;
+      if (w === 1) {
+        expect(runDrill(g, rng, kid.id, 'PASSING').ok).toBe(false);
+        expect(runDrill(g, rng, others[0], 'PASSING').ok).toBe(true);
+        expect(runDrill(g, rng, others[1], 'PASSING').ok).toBe(true);
+        expect(runDrill(g, rng, others[2], 'PASSING').ok).toBe(false);
+      }
+    }
+    const gain = kid.stats.passing - start;
+    expect(gain).toBeLessThanOrEqual(18);
+  });
+  it('scout briefs get more precise with a better scout', () => {
+    expect(briefOptionsFor(1.5).some((o) => o.id === 'POS:ST')).toBe(false);
+    expect(briefOptionsFor(1.5).some((o) => o.id === 'DEFENSIVE')).toBe(true);
+    expect(briefOptionsFor(3).some((o) => o.id === 'B_FWD')).toBe(true);
+    expect(briefOptionsFor(4.5).some((o) => o.id === 'POS:ST')).toBe(true);
+    const g = careerAt(81);
+    const club = g.clubs[g.manager.clubId!];
+    const rng = createRng(8);
+    const scout = generateStaff(g, rng, 'CHIEF_SCOUT', 45, 'ENG', club.id);
+    club.staff.CHIEF_SCOUT = scout.id;
+    club.finances.bank = 5_000_000;
+    expect(setScoutBrief(g, 'POS:CB', 'ITA').ok).toBe(true);
+    refreshShortlist(g, rng);
+    expect(g.shortlist.ids.length).toBeGreaterThan(0);
+    for (const id of g.shortlist.ids) {
+      const p = g.players[id];
+      expect(p.position).toBe('CB');
+      expect(g.clubs[p.clubId!].country).toBe('ITA');
+    }
   });
 });

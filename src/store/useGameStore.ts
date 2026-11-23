@@ -15,7 +15,7 @@ import {
 } from '../engine/transferEngine';
 import { signYouth, releaseYouth, loanOutYouth } from '../engine/academyEngine';
 import { hireStaff } from '../engine/staffGenerator';
-import { refreshShortlist } from '../engine/shortlistEngine';
+import { refreshShortlist, setScoutBrief } from '../engine/shortlistEngine';
 import { upgradeFacility } from '../engine/financeEngine';
 import { applyDilemmaEffects } from '../engine/moraleEngine';
 import { FORMATIONS } from '../data/formations';
@@ -75,6 +75,7 @@ interface GameStore {
   beginPrep(): void;
   setInstruction(slot: number, id: InstructionId | null): void;
   clearUrgentFaxes(): void;
+  setScoutBrief(focus: string, country: CountryCode | 'ANY'): void;
 
   setFormation(f: FormationId): void;
   setDial<K extends keyof TeamDials>(k: K, v: TeamDials[K]): void;
@@ -140,8 +141,11 @@ export const useGameStore = create<GameStore>()(
         if (!cur) return;
         const g = structuredClone(cur);
         const rng = createRng(g.rngState);
+        const open = new Set(g.faxes.filter((f) => !f.resolved).map((f) => f.id));
         const res = fn(g, rng);
         g.rngState = rng.state;
+        // anything you just dealt with is, by definition, read
+        for (const f of g.faxes) if (f.resolved && open.has(f.id)) f.read = true;
         set({ game: g });
         if (res && !silent) get().toast(res.message, res.ok);
         return res;
@@ -240,6 +244,7 @@ export const useGameStore = create<GameStore>()(
           c.tactics.instructions = arr;
           return id ? { ok: true, message: `Instruction: ${INSTRUCTIONS[id].label}.` } : undefined;
         }),
+        setScoutBrief: (focus, country) => { mutate((g) => setScoutBrief(g, focus, country)); },
         clearUrgentFaxes: () => mutate((g) => { g.urgentFaxIds = []; }, true),
         nextSeason: () => {
           const cur = get().game;

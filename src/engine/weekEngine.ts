@@ -96,12 +96,34 @@ export function recoverySession(g: GameState, rng: Rng, choice: RecoveryChoice):
 }
 
 /* ------------------------------------------------------------------ */
-/* One-on-one drill (one player, once a week)                          */
+/* One-on-one drills: up to three players a week                       */
 /* ------------------------------------------------------------------ */
 
+export const DRILLS_PER_WEEK = 3;
+
+export function weekSessions(g: GameState): { playerId: string; drill: DrillKind; gained: string }[] {
+  const d = g.weekDrills;
+  return d && d.year === g.season.year && d.week === g.season.matchweek ? d.sessions : [];
+}
+
 export function drillAvailable(g: GameState): boolean {
-  const d = g.lastDrill;
-  return !d || d.year !== g.season.year || d.week !== g.season.matchweek;
+  return weekSessions(g).length < DRILLS_PER_WEEK;
+}
+
+/** How far a player is towards his next +1 from drills, 0..1. */
+export function drillProgressOf(g: GameState, playerId: string, stat: string): number {
+  return g.drillProgress?.[`${playerId}:${stat}`] ?? 0;
+}
+
+/**
+ * Per-session progress (fractions of a stat point). A 3★ coach with a young
+ * player who has room to grow earns about a point every 4 sessions; a
+ * veteran near his ceiling barely moves. Hidden PA always caps it.
+ */
+export function drillRate(p: Player, coachStars: number): number {
+  const age = p.age <= 21 ? 1.2 : p.age <= 25 ? 1 : p.age <= 29 ? 0.6 : 0.3;
+  const room = clamp((p.truePA - p.ca) / 8, 0.1, 1);
+  return (0.13 + 0.07 * coachStars) * age * room;
 }
 
 export function runDrill(g: GameState, rng: Rng, playerId: string, drill: DrillKind): { ok: boolean; message: string } {
@@ -110,38 +132,41 @@ export function runDrill(g: GameState, rng: Rng, playerId: string, drill: DrillK
   const def = DRILLS.find((d) => d.id === drill);
   if (!club || !p || p.clubId !== club.id || !def) return { ok: false, message: 'Not available.' };
   if (g.phase === 'MATCHDAY') return { ok: false, message: 'It\'s matchday. Drills wait until tomorrow.' };
-  if (!drillAvailable(g)) return { ok: false, message: 'You have already run this week\'s one-on-one session.' };
+  const sessions = weekSessions(g);
+  if (sessions.length >= DRILLS_PER_WEEK) return { ok: false, message: `You've run all ${DRILLS_PER_WEEK} one-on-one sessions this week.` };
+  if (sessions.some((x) => x.playerId === playerId)) return { ok: false, message: `${p.lastName} has already had his session this week.` };
   if (p.injuryWeeks > 0) return { ok: false, message: `${p.lastName} is injured.` };
   if (def.gkOnly && p.position !== 'GK') return { ok: false, message: 'That drill is for goalkeepers.' };
   if (def.outfieldOnly && p.position === 'GK') return { ok: false, message: 'Keepers have their own drills.' };
   if (p.fitness < 55) return { ok: false, message: `${p.lastName} is running on empty (${Math.round(p.fitness)}%). Rest him first.` };
   const coach = staffStarsOf(g, club.id, 'HEAD_COACH');
-  // gain: coach quality × age curve × room to grow (hidden PA still caps it)
-  const room = clamp((p.truePA - p.ca) / 10, 0, 1.2);
-  const expected = (0.2 + 0.11 * coach) * Math.min(1.5, ageCurve(p.age, p.careerCurve) + 0.15) * (0.35 + room);
+  const rate = drillRate(p, coach) * rng.range(0.8, 1.2);
+  g.drillProgress ??= {};
   let gained = '';
-  let points = Math.floor(expected) + (rng.next() < expected - Math.floor(expected) ? 1 : 0);
-  points = Math.min(points, 2);
-  for (let i = 0; i < points; i++) {
-    const k = rng.pick(def.stats);
-    if (p.stats[k] >= 99) continue;
-    p.stats[k] += 1;
-    const ca = ovrFor(p.stats, p.position);
-    if (ca > p.truePA) { p.stats[k] -= 1; break; }
-    p.ca = ca;
-    gained += `${gained ? ', ' : ''}+1 ${k}`;
+  // the work is split across the drill's stats
+  for (const k of def.stats) {
+    const key = `${p.id}:${k}`;
+    let prog = (g.drillProgress[key] ?? 0) + rate / def.stats.length;
+    if (prog >= 1 && p.stats[k] < 99) {
+      p.stats[k] += 1;
+      const ca = ovrFor(p.stats, p.position);
+      if (ca > p.truePA) { p.stats[k] -= 1; prog = 0.95; }
+      else { p.ca = ca; prog -= 1; gained += `${gained ? ', ' : ''}+1 ${k}`; }
+    }
+    g.drillProgress[key] = Math.min(prog, 0.99);
   }
   p.fitness = clamp(p.fitness - def.fitness, 30, 100);
-  p.moraleValue = clamp(p.moraleValue + 2, 0, 100);
-  g.lastDrill = { year: g.season.year, week: g.season.matchweek, playerId, drill, gained };
-  if (rng.chance(0.012 + (def.id === 'SPRINTS' ? 0.01 : 0))) {
+  p.moraleValue = clamp(p.moraleValue + 1, 0, 100);
+  g.weekDrills = { year: g.season.year, week: g.season.matchweek, sessions: [...sessions, { playerId, drill, gained }] };
+  if (rng.chance(0.01 + (def.id === 'SPRINTS' ? 0.008 : 0))) {
     const inj = rollInjury(rng, staffStarsOf(g, club.id, 'PHYSIO'), 'TRAINING', g.season.year, g.season.matchweek);
     applyInjury(g, p, inj);
     return { ok: false, message: `${p.lastName} tweaked something in the ${def.label.toLowerCase()} session: ${inj.name} (${inj.weeksTotal} wk).` };
   }
+  const pct = Math.round(Math.max(...def.stats.map((k) => drillProgressOf(g, p.id, k))) * 100);
   return gained
-    ? { ok: true, message: `${def.label} with ${p.lastName}: ${gained}.` }
-    : { ok: true, message: `${def.label} with ${p.lastName}: good work, no visible gain yet${p.ca >= p.truePA ? ' (he may be near his ceiling)' : ''}.` };
+    ? { ok: true, message: `${def.label} with ${p.lastName}: ${gained}!` }
+    : { ok: true, message: `${def.label} with ${p.lastName}: good work (${pct}% towards the next point)${p.ca >= p.truePA ? '. He may be near his ceiling.' : '.'}` };
 }
 
 /* ------------------------------------------------------------------ */

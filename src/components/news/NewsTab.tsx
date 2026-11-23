@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CountryCode } from '../../types/world';
 import type { NewsCategory, NewsItem } from '../../types/news';
-import { useGame } from '../ui';
+import { useGame, FlagIcon } from '../ui';
 import { COUNTRIES } from '../../data/countries';
 
 /** Localised mastheads for the five nations' back pages. */
@@ -120,7 +120,7 @@ function Brief({ n, country }: { n: NewsItem; country: CountryCode }) {
     <div className="brief">
       <div className="flex items-start justify-between gap-2">
         <div className="condensed text-[11px] tracking-widest opacity-75">
-          {KICKER[n.category]} · {COUNTRIES[n.country].flag} {n.country} · {MATCHWEEK_WORD[country].slice(0, 3)}. {n.matchweek} · {seasonLabel(n.year)}
+          {KICKER[n.category]} · <FlagIcon code={n.country} emoji={COUNTRIES[n.country].flag} /> {n.country} · {MATCHWEEK_WORD[country].slice(0, 3)}. {n.matchweek} · {seasonLabel(n.year)}
         </div>
         {n.myClub && <span className="myclub-stamp shrink-0">MY CLUB</span>}
       </div>

@@ -45,12 +45,22 @@ export function MoraleIcon({ value, size = 16 }: { value: number; size?: number 
   return <span title={MORALE_LABELS[lvl]} className={cls}><Icon size={size} /></span>;
 }
 
+/** Windows can't draw the England/Scotland subdivision emoji, so those two are tiny SVGs. */
+const SVG_FLAGS: Record<string, JSX.Element> = {
+  ENG: <svg width="18" height="12" viewBox="0 0 18 12" className="inline-block shadow-sm" aria-label="England"><rect width="18" height="12" fill="#fff" /><rect x="7.5" width="3" height="12" fill="#ce1124" /><rect y="4.5" width="18" height="3" fill="#ce1124" /></svg>,
+  SCO: <svg width="18" height="12" viewBox="0 0 18 12" className="inline-block shadow-sm" aria-label="Scotland"><rect width="18" height="12" fill="#0065bd" /><path d="M0 0L18 12M18 0L0 12" stroke="#fff" strokeWidth="2.2" /></svg>,
+};
+
+export function FlagIcon({ code, emoji }: { code: string; emoji: string }) {
+  return SVG_FLAGS[code] ?? <span>{emoji}</span>;
+}
+
 /** Flag + 3-letter code (subdivision flags like England/Scotland don't render everywhere). */
 export function NationTag({ code, full }: { code: string; full?: boolean }) {
   const n = nationOf(code);
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap" title={n.name}>
-      <span className="text-base leading-none">{n.flag}</span>
+      {SVG_FLAGS[n.code] ?? <span className="text-base leading-none">{n.flag}</span>}
       <span className="text-[11px] font-mono font-bold tracking-wider border border-current/40 px-[3px] rounded-sm leading-4">{n.code}</span>
       {full && <span>{n.name}</span>}
     </span>

@@ -9,7 +9,7 @@ import { squadStrength } from '../../engine/lineup';
 import { fmtMoney, weeklyWageBill } from '../../engine/financeEngine';
 import { starsFromInternal } from '../../engine/ratings';
 import CRTMonitor from '../layout/CRTMonitor';
-import { Stars } from '../ui';
+import { Stars, FlagIcon } from '../ui';
 
 /** Country selector → 3 faxed job offers (+ tucked-away Free Pick). Also the post-sacking desk. */
 export default function JobOfferDesk() {
@@ -50,7 +50,7 @@ function CountryPicker() {
               const d = COUNTRIES[c];
               return (
                 <button key={c} onClick={() => setCountry(c)} className={`text-left border-2 rounded px-3 py-1 ${country === c ? 'border-navy-900 bg-navy-900 text-amber-crt' : 'border-[#6e6550] bg-[#fffbe9]'}`}>
-                  <span className="text-lg mr-2">{d.flag}</span><b>{d.name}</b>
+                  <span className="text-lg mr-2"><FlagIcon code={d.code} emoji={d.flag} /></span><b>{d.name}</b>
                   <span className="block text-xs opacity-80">{flavour(c)}</span>
                 </button>
               );
@@ -84,7 +84,7 @@ function OffersDesk({ g }: { g: GameState }) {
     <div className="min-h-full p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-6">
-          <h1 className="font-type text-3xl text-[#f3ecd8] drop-shadow">{sacked ? 'Clearing your desk…' : `${COUNTRIES[g.activeCountry].flag} Incoming faxes for ${g.manager.name}`}</h1>
+          <h1 className="font-type text-3xl text-[#f3ecd8] drop-shadow">{sacked ? 'Clearing your desk…' : <><FlagIcon code={g.activeCountry} emoji={COUNTRIES[g.activeCountry].flag} /> Incoming faxes for {g.manager.name}</>}</h1>
           <button className="btn btn-sm flex items-center gap-1" onClick={resetCareer}><RotateCcw size={14} /> New career</button>
         </div>
         {sacked && termination && (

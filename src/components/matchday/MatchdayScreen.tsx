@@ -9,7 +9,7 @@ import { userFixturesThisWeek, leaguePosition, userInCup } from '../../engine/se
 import { squadStrength } from '../../engine/lineup';
 import { sortedTable } from '../../engine/shadowLeagueEngine';
 import { unscoutedOvrRange } from '../../engine/scoutingEngine';
-import { RECOVERY_INFO, drillAvailable } from '../../engine/weekEngine';
+import { RECOVERY_INFO, drillAvailable, weekSessions, drillProgressOf, drillRate, DRILLS_PER_WEEK } from '../../engine/weekEngine';
 import { DRILLS, type DrillKind } from '../../data/drills';
 import { hash01 } from '../../engine/rng';
 import { playerName } from '../../engine/ratings';
@@ -368,33 +368,61 @@ function DrillPanel({ compact }: { compact?: boolean }) {
   const g = useGame();
   const club = useUserClub();
   const s = useGameStore();
+  const sessions = weekSessions(g);
+  const done = new Set(sessions.map((x) => x.playerId));
   const squad = useMemo(() => club.playerIds.map((id) => g.players[id]).filter((p) => p && p.injuryWeeks === 0).sort((a, b) => a.age - b.age || b.ca - a.ca), [g, club]);
-  const [pid, setPid] = useState<string>(squad[0]?.id ?? '');
+  const choices = squad.filter((p) => !done.has(p.id));
+  const [pidRaw, setPid] = useState<string>(choices[0]?.id ?? '');
+  const pid = choices.some((p) => p.id === pidRaw) ? pidRaw : choices[0]?.id ?? '';
   const p = g.players[pid];
   const opts = DRILLS.filter((d) => (p?.position === 'GK' ? !d.outfieldOnly : !d.gkOnly));
-  const [drill, setDrill] = useState<DrillKind>(opts[0]?.id ?? 'PASSING');
-  const def = DRILLS.find((d) => d.id === drill) ?? opts[0];
+  const [drillRaw, setDrill] = useState<DrillKind>(opts[0]?.id ?? 'PASSING');
+  const drill = opts.some((d) => d.id === drillRaw) ? drillRaw : opts[0]?.id ?? 'PASSING';
+  const def = DRILLS.find((d) => d.id === drill);
   const avail = drillAvailable(g);
-  const last = g.lastDrill;
   const coach = staffStars(g, club, 'HEAD_COACH');
+  const prog = p && def ? Math.max(...def.stats.map((k) => drillProgressOf(g, p.id, k))) : 0;
+  const rate = p ? drillRate(p, coach) : 0;
   return (
     <div className="paper p-4">
-      <div className="font-bold flex items-center gap-2"><Dumbbell size={16} /> ONE-ON-ONE SESSION <span className="text-sm font-normal opacity-70">· once a week · head coach <Stars value={coach} size={11} /></span></div>
-      {avail ? (
+      <div className="font-bold flex items-center gap-2 flex-wrap">
+        <Dumbbell size={16} /> ONE-ON-ONE SESSIONS
+        <span className="text-sm font-normal opacity-70">· {sessions.length}/{DRILLS_PER_WEEK} this week · head coach <Stars value={coach} size={11} /></span>
+      </div>
+      {sessions.length > 0 && (
+        <div className="mt-1 text-sm space-y-[2px]">
+          {sessions.map((x) => {
+            const sp = g.players[x.playerId];
+            const sd = DRILLS.find((d) => d.id === x.drill);
+            const pr = sp && sd ? Math.max(...sd.stats.map((k) => drillProgressOf(g, sp.id, k))) : 0;
+            return (
+              <div key={x.playerId} className="flex items-center gap-2">
+                <span className="w-40 truncate">✓ {sp ? playerName(sp) : '?'}</span>
+                <span className="w-24 opacity-80">{sd?.label}</span>
+                {x.gained ? <b className="text-green-800">{x.gained}</b> : <span className="flex items-center gap-1 opacity-80"><span className="inline-block w-20 h-2 bg-black/10 rounded-sm overflow-hidden"><span className="block h-full bg-[#7a6a45]" style={{ width: `${pr * 100}%` }} /></span>{Math.round(pr * 100)}%</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {avail && choices.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-2 items-center text-sm">
-          <select className="desk-input" value={pid} onChange={(e) => { setPid(e.target.value); const np = g.players[e.target.value]; const o = DRILLS.filter((d) => (np?.position === 'GK' ? !d.outfieldOnly : !d.gkOnly)); if (!o.some((d) => d.id === drill)) setDrill(o[0].id); }}>
-            {squad.map((x) => <option key={x.id} value={x.id}>{x.lastName} · {x.position} · {x.age} · {x.ca} · fit {Math.round(x.fitness)}%</option>)}
+          <select className="desk-input" value={pid} onChange={(e) => setPid(e.target.value)}>
+            {choices.map((x) => <option key={x.id} value={x.id}>{x.lastName} · {x.position} · {x.age} · {x.ca} · fit {Math.round(x.fitness)}%</option>)}
           </select>
           <div className="seg">
             {opts.map((d) => <button key={d.id} className={drill === d.id ? 'on' : ''} onClick={() => setDrill(d.id)}>{d.label}</button>)}
           </div>
           <button className="btn btn-sm btn-amber" disabled={!p || !def} onClick={() => s.drill(pid, drill)}>RUN SESSION</button>
-          {!compact && def && <div className="w-full text-xs opacity-75">{def.blurb} Trains {def.stats.join(' and ')}, costs about {def.fitness}% fitness. Young players with room to grow gain most.</div>}
+          {p && def && (
+            <div className="w-full text-xs opacity-80">
+              {!compact && <>{def.blurb} </>}Trains {def.stats.join(' and ')}, costs about {def.fitness}% fitness.
+              {' '}{p.lastName}: {Math.round(prog * 100)}% towards the next point, roughly {rate >= 0.3 ? 'a point every two or three weeks' : rate >= 0.15 ? 'a point every month or so' : 'very slow progress at his age and level'}.
+            </div>
+          )}
         </div>
       ) : (
-        <div className="text-sm mt-1">
-          {last && g.players[last.playerId] ? <>This week: {DRILLS.find((d) => d.id === last.drill)?.label} with {playerName(g.players[last.playerId])}. {last.gained ? <b className="text-green-800">{last.gained}</b> : 'No visible gain yet.'}</> : 'Done for this week.'}
-        </div>
+        <div className="text-sm mt-1 opacity-70">That's this week's sessions done. Progress builds week by week; young players with room to grow move fastest.</div>
       )}
     </div>
   );
