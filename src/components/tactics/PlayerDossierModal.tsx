@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Search, Send, FileSignature, Plane, UserMinus } from 'lucide-react';
+import { X, Search, Send, FileSignature, Plane, UserMinus, Tag } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, Modal, StatBar, MoraleIcon, FitnessBar, FormDots, PosTag, paRead, ovrRead, Stars, NationTag, InjuryBadge, valueRead, valueKnown, roughValue } from '../ui';
 import { SEVERITY_LABEL } from '../../data/injuries';
@@ -44,7 +44,7 @@ export default function PlayerDossierModal({ playerId, onClose }: { playerId: st
               <div>
                 <div className="text-2xl font-bold leading-7">{fullName(p)}</div>
                 <div className="text-sm flex items-center gap-2 mt-1">
-                  <PosTag pos={p.position} /> Age {p.age} · <NationTag code={p.nationality} full /> · {pc ? pc.name : prospect ? 'Academy prospect' : 'Free agent'}
+                  <PosTag pos={p.position} />{p.listed && <span className="text-[11px] bg-red-700 text-white px-1 rounded">{p.listed.kind === 'TRANSFER' ? 'FOR SALE' : 'LOAN LIST'}</span>} Age {p.age} · <NationTag code={p.nationality} full /> · {pc ? pc.name : prospect ? 'Academy prospect' : 'Free agent'}
                   {p.loanFromClubId && <span className="text-xs bg-blue-700 text-white px-1 rounded">ON LOAN from {g.clubs[p.loanFromClubId]?.name}</span>}
                 </div>
                 <div className="text-sm mt-1"><span className="opacity-60">Profile:</span> <span className="handwritten text-base">{p.playstyle}</span> <span className="opacity-60">· natural role</span> {p.preferredRole}</div>
@@ -139,6 +139,7 @@ function OwnActions({ playerId }: { playerId: string }) {
   const [wage, setWage] = useState(renewalDemand(g, p));
   const [years, setYears] = useState(3);
   const tagged = club.tactics.trainingTags.includes(p.id);
+  const [ask, setAsk] = useState(Math.round((p.listed?.ask || valuePlayer(p) * 1.1) / 5000) * 5000);
   return (
     <div className="grid md:grid-cols-3 gap-3">
       <div className="paper p-3">
@@ -160,6 +161,19 @@ function OwnActions({ playerId }: { playerId: string }) {
       </div>
       <div className="paper p-3 space-y-2">
         <div className="font-bold">Squad decisions</div>
+        <div className="border border-dashed border-black/30 rounded p-2 space-y-1">
+          <div className="text-xs uppercase tracking-wider opacity-70 flex items-center gap-1"><Tag size={12} /> Shop window</div>
+          {p.listed && <div className="text-sm font-bold text-red-800">{p.listed.kind === 'TRANSFER' ? `ON THE TRANSFER LIST · ${fmtMoney(p.listed.ask)}` : 'ON THE LOAN LIST'}</div>}
+          {!p.loanFromClubId ? <>
+            <div className="flex items-center gap-1 text-sm">Asking <input type="number" className="desk-input w-28" value={ask} step={5000} onChange={(e) => setAsk(Number(e.target.value))} /></div>
+            <div className="flex gap-1 flex-wrap">
+              <button className="btn btn-amber btn-sm" onClick={() => s.listPlayer(p.id, 'TRANSFER', ask)}>{p.listed?.kind === 'TRANSFER' ? 'UPDATE PRICE' : 'TRANSFER LIST'}</button>
+              <button className="btn btn-sm" onClick={() => s.listPlayer(p.id, 'LOAN')}>LOAN LIST</button>
+              {p.listed && <button className="btn btn-sm" onClick={() => s.listPlayer(p.id, null)}>TAKE OFF</button>}
+            </div>
+            <div className="text-[11px] opacity-70">Value ~{fmtMoney(valuePlayer(p))}. Clubs bid for listed players more often, near your price (not far above his value). Loan-listed players go out until summer; the other club pays his wages. Being listed unsettles him a little.</div>
+          </> : <div className="text-xs opacity-70">He is a loanee. Not yours to list.</div>}
+        </div>
         {p.age <= 23 && !p.loanFromClubId && <button className="btn btn-sm flex items-center gap-1" onClick={() => s.loanOut(p.id)}><Plane size={14} /> LOAN OUT FOR MINUTES</button>}
         <button className="btn btn-red btn-sm flex items-center gap-1" disabled={!!p.loanFromClubId} onClick={() => { s.release(p.id); s.openDossier(null); }}><UserMinus size={14} /> RELEASE (pay-off {fmtMoney(p.contract.wage * 8 * Math.max(1, p.contract.yearsLeft))})</button>
       </div>

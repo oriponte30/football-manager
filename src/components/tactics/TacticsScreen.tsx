@@ -370,7 +370,7 @@ function RosterView({ onPick }: { onPick: (p: Player) => void }) {
               <button key={p.id} onClick={() => onPick(p)} className={`${cols} w-full items-center px-1 py-[2px] gap-x-1 border-b border-black/10 text-sm text-left hover:bg-yellow-100/60`}>
                 <PlayerFace p={p} size={26} shirt={club.colors[0]} />
                 <PosTag pos={p.position} />
-                <span className="truncate">{playerName(p)}{t.trainingTags.includes(p.id) ? ' ◆' : ''}</span>
+                <span className="truncate">{playerName(p)}{t.trainingTags.includes(p.id) ? ' ◆' : ''}{p.listed ? <span className="ml-1 text-[10px] bg-red-700 text-white px-1 rounded">{p.listed.kind === 'TRANSFER' ? 'SALE' : 'LOAN'}</span> : null}</span>
                 <span>{p.age}</span>
                 <NationTag code={p.nationality} />
                 <b>{p.ca}</b>

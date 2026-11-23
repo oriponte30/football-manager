@@ -184,6 +184,9 @@ export interface GameState {
   pendingYouth: string[];
   jobOffers: JobOffer[];
   dilemma: Dilemma | null;
+  /** titles of the last few dilemmas / press questions, so they don't repeat */
+  dilemmaHistory?: string[];
+  pressHistory?: string[];
   lastUserResults: MatchResult[];
   lastWeekResults: WeekResultLine[];
   history: SeasonRecord[];

@@ -273,6 +273,7 @@ export function movePlayer(g: GameState, p: Player, toClubId: string | null): vo
   if (toClubId) g.clubs[toClubId].playerIds.push(p.id);
   else if (!g.freeAgentIds.includes(p.id)) g.freeAgentIds.push(p.id);
   p.trainingFocus = 'NONE';
+  delete p.listed;
 }
 
 /** Finalise an accepted (or countered-then-accepted) user bid. */
@@ -358,6 +359,99 @@ export function signFreeAgent(g: GameState, clubId: string, playerId: string, wa
   return { ok: true, message: `${fullName(p)} signs on a free (${fmtMoney(wage)}/wk, ${years} yr, ${fmtMoney(bonus)} signing bonus).` };
 }
 
+/* ------------------------- Transfer list / loan list ------------------------- */
+
+const MIN_SQUAD_FOR_LISTING = 16;
+
+/** Put one of your players in the shop window, or take him off again (kind = null). */
+export function listPlayer(g: GameState, clubId: string, playerId: string, kind: 'TRANSFER' | 'LOAN' | null, ask?: number): { ok: boolean; message: string } {
+  const p = g.players[playerId];
+  const club = g.clubs[clubId];
+  if (!p || !club || p.clubId !== clubId) return { ok: false, message: 'Not your player.' };
+  if (kind === null) {
+    if (!p.listed) return { ok: false, message: `${p.lastName} is not listed.` };
+    delete p.listed;
+    p.moraleValue = clamp(p.moraleValue + 4, 0, 100);
+    return { ok: true, message: `${fullName(p)} taken off the list. He is relieved to be wanted.` };
+  }
+  if (p.loanFromClubId) return { ok: false, message: 'He is a loanee. He is not yours to sell.' };
+  if (club.playerIds.length <= MIN_SQUAD_FOR_LISTING) return { ok: false, message: `You only have ${club.playerIds.length} players. Keep at least ${MIN_SQUAD_FOR_LISTING + 1} before listing anyone.` };
+  const value = valuePlayer(p);
+  const price = kind === 'TRANSFER' ? Math.max(5000, Math.round((ask && ask > 0 ? ask : value * 1.1) / 5000) * 5000) : 0;
+  const wasListed = !!p.listed;
+  p.listed = { kind, ask: price, season: g.season.year, week: g.season.matchweek };
+  if (!wasListed) {
+    // being put in the shop window stings, a little less if he was already unhappy or is a squad filler
+    const sting = p.moraleValue < 40 ? 3 : p.ca >= avgCa(g, club) ? 9 : 5;
+    p.moraleValue = clamp(p.moraleValue - sting, 0, 100);
+    if (p.fanFavorite && kind === 'TRANSFER') club.fanInterest = clamp(club.fanInterest - 2, 0, 100);
+  }
+  return kind === 'TRANSFER'
+    ? { ok: true, message: `${fullName(p)} is on the transfer list at ${fmtMoney(price)}. Clubs will be told.` }
+    : { ok: true, message: `${fullName(p)} is on the loan list. Clubs will be told.` };
+}
+
+/** Offers for listed players arrive more often, and sit close to the asking price. */
+function listedTransferBid(g: GameState, rng: Rng, userClubId: string): boolean {
+  const user = g.clubs[userClubId];
+  const listed = user.playerIds.map((id) => g.players[id]).filter((p) => p && p.listed?.kind === 'TRANSFER' && !p.loanFromClubId);
+  if (listed.length === 0) return false;
+  const target = rng.pick(listed);
+  const value = valuePlayer(target);
+  const ask = target.listed!.ask || value;
+  // an absurd price scares the market off; a fair one gets calls every week
+  const appetite = clamp(value / ask, 0.15, 1.1);
+  if (!rng.chance(0.5 * appetite)) return false;
+  if (g.bids.some((b) => b.playerId === target.id && b.status === 'PENDING')) return false;
+  const buyers = Object.values(g.clubs).filter((c) => !c.isShadow && c.id !== userClubId && c.playerIds.length < 32
+    && c.tier >= user.tier - 1 && c.tier <= user.tier + 1
+    && avgCa(g, c) <= target.ca + 6 && c.finances.bank > value * 0.8);
+  if (buyers.length === 0) return false;
+  const buyer = rng.pick(buyers);
+  const fx = isForeignSale(user, buyer) ? COUNTRIES[user.country].foreignFeeMult : 1;
+  const openAt = Math.min(ask, value * fx * 1.2) * rng.range(0.78, 0.96);
+  const fee = Math.max(5000, Math.round(openAt / 5000) * 5000);
+  const ceiling = Math.min(buyer.finances.bank * 0.6, Math.max(fee, Math.round(Math.min(ask, value * fx * 1.35) * rng.range(0.92, 1.02) / 5000) * 5000));
+  if (fee > buyer.finances.bank) return false;
+  const bid: TransferBid = {
+    id: nextId(g, 'b'), type: 'TRANSFER', direction: 'INCOMING', playerId: target.id, buyerClubId: buyer.id, sellerClubId: userClubId,
+    fee, wage: Math.round(target.contract.wage * 1.3), years: 3, includePlayerId: null, loanWageShare: 0, status: 'PENDING',
+    counterFee: null, resolveWeek: g.season.matchweek + 1, season: g.season.year, note: 'listed', walkAway: Math.max(fee, ceiling), rounds: 0,
+  };
+  g.bids.push(bid);
+  fax(g, {
+    kind: 'INCOMING_BID', from: buyer.name, title: `OFFER FOR LISTED PLAYER: ${fullName(target)}`, playerId: target.id, bidId: bid.id, resolved: false,
+    body: `${buyer.name} have seen ${fullName(target)} is available at ${fmtMoney(ask)} and offer ${fmtMoney(fee)}. Accept, reject, or name your price. Offer stands until next turn.`,
+  });
+  return true;
+}
+
+/** Loan-listed players get taken for the rest of the season by a club that will play them. */
+export function processLoanList(g: GameState, rng: Rng, userClubId: string): void {
+  if (!windowOpen(g)) return;
+  const user = g.clubs[userClubId];
+  const listed = user.playerIds.map((id) => g.players[id]).filter((p) => p && p.listed?.kind === 'LOAN' && !p.loanFromClubId);
+  for (const p of listed) {
+    if (user.playerIds.length <= MIN_SQUAD_FOR_LISTING || !rng.chance(0.3)) continue;
+    const dests = Object.values(g.clubs).filter((c) => !c.isShadow && c.id !== userClubId && c.playerIds.length < 30
+      && Math.abs(c.tier - user.tier) <= 1 && avgCa(g, c) <= p.ca + 7);
+    if (dests.length === 0) continue;
+    const dest = rng.pick(dests);
+    const fee = Math.round(valuePlayer(p) * 0.04 / 1000) * 1000;
+    detachFromClub(g, p);
+    p.loanFromClubId = userClubId;
+    p.clubId = dest.id;
+    dest.playerIds.push(p.id);
+    delete p.listed;
+    dest.finances.bank -= fee;
+    credit(user, fee, 'sales');
+    fax(g, {
+      kind: 'BID_RESPONSE', from: dest.name, title: `LOAN AGREED: ${fullName(p)}`, playerId: p.id, resolved: true, urgent: false,
+      body: `${dest.name} have taken ${fullName(p)} on loan until the end of the season. They pay his wages and a ${fmtMoney(fee)} loan fee. He returns in the summer.`,
+    });
+  }
+}
+
 /* ------------------------- Loan out own kids ------------------------- */
 
 export function loanOutPlayer(g: GameState, rng: Rng, clubId: string, playerId: string): { ok: boolean; message: string } {
@@ -387,6 +481,7 @@ export function returnLoans(g: GameState): void {
       if (p.contract.wage < 200) p.contract.wage = 200;
     } else g.freeAgentIds.push(p.id);
     p.loanFromClubId = null;
+    delete p.listed;
   }
 }
 
@@ -434,8 +529,11 @@ export function releasePlayer(g: GameState, playerId: string): { ok: boolean; me
 /* ------------------------- AI bids for the user's players ------------------------- */
 
 export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void {
-  if (!windowOpen(g) || g.season.matchweek <= 2 || !rng.chance(0.24)) return;
+  if (!windowOpen(g)) return;
+  processLoanList(g, rng, userClubId);
   if (g.bids.some((b) => b.direction === 'INCOMING' && b.status === 'PENDING')) return;
+  if (listedTransferBid(g, rng, userClubId)) return;
+  if (g.season.matchweek <= 2 || !rng.chance(0.24)) return;
   const user = g.clubs[userClubId];
   const squad = user.playerIds.map((id) => g.players[id]).filter((p) => p && !p.loanFromClubId);
   if (squad.length < 18) return;
@@ -548,11 +646,14 @@ export function expireIncomingBids(g: GameState): void {
 /* ------------------------- Rare AI trade faxes (max 2 / season) ------------------------- */
 
 export function maybeAiTradeFax(g: GameState, rng: Rng, userClubId: string): void {
-  if (g.aiTradeFaxesThisSeason >= 2 || !windowOpen(g) || !rng.chance(0.18)) return;
+  const hasListed = g.clubs[userClubId].playerIds.some((id) => g.players[id]?.listed?.kind === 'TRANSFER');
+  if (g.aiTradeFaxesThisSeason >= 4 || !windowOpen(g) || !rng.chance(hasListed ? 0.4 : 0.26)) return;
   const user = g.clubs[userClubId];
   const mine = user.playerIds.map((id) => g.players[id]).filter((p) => p && !p.loanFromClubId && p.age >= 20);
   if (mine.length === 0) return;
-  const wanted = rng.pick(mine);
+  // a listed player attracts swap offers first
+  const listedMine = mine.filter((p) => p.listed?.kind === 'TRANSFER');
+  const wanted = rng.pick(listedMine.length > 0 && rng.chance(0.7) ? listedMine : mine);
   const partners = Object.values(g.clubs).filter((c) => !c.isShadow && c.id !== userClubId && Math.abs(c.tier - user.tier) <= 1);
   if (partners.length === 0) return;
   const partner = rng.pick(partners);
@@ -568,7 +669,7 @@ export function maybeAiTradeFax(g: GameState, rng: Rng, userClubId: string): voi
   // they send his file with the proposal: your scout's read of him lands on your desk
   g.scoutReports[offer.id] = generateScoutReport(g, offer, user.staff.CHIEF_SCOUT);
   fax(g, {
-    kind: 'TRADE_PROPOSAL', from: partner.name, title: `SWAP PROPOSAL: ${wanted.lastName} ⇄ ${offer.lastName}`, trade, tradeId: trade.id, playerId: offer.id, resolved: false,
+    kind: 'TRADE_PROPOSAL', from: partner.name, title: `SWAP PROPOSAL: ${wanted.lastName} ⇄ ${offer.lastName}`, trade, tradeId: trade.id, playerId: offer.id, resolved: false, urgent: true,
     body: `We propose a straight swap: your ${fullName(wanted)} (${wanted.position}) for our ${fullName(offer)} (${offer.position}, ${offer.age}).${trade.cashAdjustment > 0 ? ` We add ${fmtMoney(trade.cashAdjustment)}.` : trade.cashAdjustment < 0 ? ` You add ${fmtMoney(-trade.cashAdjustment)}.` : ''}`,
   });
 }

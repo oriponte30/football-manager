@@ -83,7 +83,9 @@ export type DilemmaEffect =
   | { kind: 'BANK'; delta: number }
   | { kind: 'FAN_INTEREST'; delta: number }
   | { kind: 'BOARD'; delta: number }
-  | { kind: 'WAGE_RISE'; playerId: string; pct: number };
+  | { kind: 'WAGE_RISE'; playerId: string; pct: number }
+  | { kind: 'SQUAD_MORALE'; delta: number }
+  | { kind: 'PLAYER_FITNESS'; playerId: string; delta: number };
 
 export interface DilemmaOption {
   label: string;

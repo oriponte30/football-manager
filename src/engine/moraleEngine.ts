@@ -6,6 +6,7 @@ import type { PlayerMatchStats } from '../types/match';
 import { clamp, type Rng } from './rng';
 import { fullName, moraleLevel } from './ratings';
 import { nextId } from './ids';
+import { dilemmaTemplates } from './dilemmaPool';
 
 export function updateMoraleAfterWeek(g: GameState, club: Club, results: ('W' | 'D' | 'L')[], weekStats: Record<string, PlayerMatchStats>): void {
   const resDelta = results.reduce((a, r) => a + (r === 'W' ? 3 : r === 'L' ? -3 : 0), 0);
@@ -30,7 +31,7 @@ export function updateMoraleAfterWeek(g: GameState, club: Club, results: ('W' | 
 }
 
 export function maybeCreateDilemma(g: GameState, rng: Rng, club: Club): Dilemma | null {
-  if (g.dilemma || !rng.chance(0.11)) return null;
+  if (g.dilemma || !rng.chance(0.15)) return null;
   const squad = club.playerIds.map((id) => g.players[id]).filter((p) => p && p.injuryWeeks === 0);
   if (squad.length < 5) return null;
   const pickUnhappy = squad.filter((p) => moraleLevel(p.moraleValue) <= 1).sort((a, b) => b.ca - a.ca)[0];
@@ -92,12 +93,21 @@ export function maybeCreateDilemma(g: GameState, rng: Rng, club: Club): Dilemma 
       ],
     }),
   ];
-  const order = rng.shuffle([...templates]);
+  const all = [...templates, ...dilemmaTemplates(g, club)];
+  const recent = g.dilemmaHistory ?? [];
+  // try the ones we haven't seen lately first, then anything
+  const order = rng.shuffle([...all]);
+  const fresh: Dilemma[] = [];
+  const stale: Dilemma[] = [];
   for (const t of order) {
     const d = t();
-    if (d) return d;
+    if (!d) continue;
+    (recent.includes(d.title) ? stale : fresh).push(d);
+    if (fresh.length) break;
   }
-  return null;
+  const pick = fresh[0] ?? stale[0] ?? null;
+  if (pick) g.dilemmaHistory = [...recent, pick.title].slice(-10);
+  return pick;
 }
 
 export function applyDilemmaEffects(g: GameState, club: Club, effects: DilemmaEffect[]): void {
@@ -127,6 +137,17 @@ export function applyDilemmaEffects(g: GameState, club: Club, effects: DilemmaEf
       case 'BOARD':
         club.board.value = clamp(club.board.value + e.delta, 0, 100);
         break;
+      case 'SQUAD_MORALE':
+        for (const id of club.playerIds) {
+          const p = g.players[id];
+          if (p) p.moraleValue = clamp(p.moraleValue + e.delta, 0, 100);
+        }
+        break;
+      case 'PLAYER_FITNESS': {
+        const p = g.players[e.playerId];
+        if (p) p.fitness = clamp(p.fitness + e.delta, 30, 100);
+        break;
+      }
       case 'WAGE_RISE': {
         const p = g.players[e.playerId];
         if (p) p.contract.wage = Math.round(p.contract.wage * (1 + e.pct) / 10) * 10;

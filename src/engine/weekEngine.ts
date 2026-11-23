@@ -19,6 +19,7 @@ import { ovrFor, fullName } from './ratings';
 import { ageCurve } from './progressionEngine';
 import { clamp, type Rng } from './rng';
 import { nextId } from './ids';
+import { pressTemplates } from './dilemmaPool';
 
 const userClub = (g: GameState): Club | null => (g.manager.clubId ? g.clubs[g.manager.clubId] : null);
 
@@ -284,8 +285,18 @@ function makePressConference(g: GameState, rng: Rng): Dilemma | null {
       ],
     }));
   }
-  if (opts.length === 0 || rng.chance(0.12)) return null; // some weeks the press have other things to do
-  return rng.pick(opts)();
+  if (rng.chance(0.1)) return null; // some weeks the press have other things to do
+  // the extra question pool: situational (streaks, table, injuries, money…) and general
+  opts.push(...pressTemplates(g, club, r));
+  if (opts.length === 0) return null;
+  // avoid asking the same question as recently
+  const recent = g.pressHistory ?? [];
+  const built = rng.shuffle([...opts]).map((t) => t()).filter((d): d is Dilemma => !!d);
+  const fresh = built.find((d) => !recent.includes(d.text));
+  const pick = fresh ?? built[0];
+  if (!pick) return null;
+  g.pressHistory = [...recent, pick.text].slice(-14);
+  return pick;
 }
 
 export function answerPress(g: GameState, idx: number): { ok: boolean; message: string } {

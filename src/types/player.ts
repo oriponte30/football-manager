@@ -107,6 +107,8 @@ export interface Player {
   fanFavorite: boolean;
   /** last 5 match ratings */
   recentRatings: number[];
+  /** the manager has put him in the shop window (transfer list / loan list) */
+  listed?: { kind: 'TRANSFER' | 'LOAN'; ask: number; season: number; week: number };
 }
 
 /** UI-facing range read of a potential, produced by staff. */

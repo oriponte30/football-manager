@@ -11,7 +11,7 @@ import { nextId } from '../engine/ids';
 import { changeFormation, fillLineup } from '../engine/lineup';
 import { assignScout } from '../engine/scoutingEngine';
 import {
-  submitBid, completeBid, signFreeAgent, answerIncomingBid, counterIncomingBid, answerTrade, loanOutPlayer, renewContract, releasePlayer, type BidInput,
+  submitBid, completeBid, listPlayer as listPlayerFn, signFreeAgent, answerIncomingBid, counterIncomingBid, answerTrade, loanOutPlayer, renewContract, releasePlayer, type BidInput,
 } from '../engine/transferEngine';
 import { signYouth, releaseYouth, loanOutYouth } from '../engine/academyEngine';
 import { hireStaff } from '../engine/staffGenerator';
@@ -98,6 +98,7 @@ interface GameStore {
   counterIncoming(bidId: string, ask: number): void;
   answerTrade(faxId: string, accept: boolean): void;
   loanOut(playerId: string): void;
+  listPlayer(playerId: string, kind: 'TRANSFER' | 'LOAN' | null, ask?: number): void;
   renew(playerId: string, wage: number, years: number): void;
   release(playerId: string): void;
 
@@ -355,6 +356,7 @@ export const useGameStore = create<GameStore>()(
         answerIncoming: (bidId, accept) => { mutate((g) => answerIncomingBid(g, bidId, accept)); },
         counterIncoming: (bidId, ask) => { mutate((g) => counterIncomingBid(g, bidId, ask)); },
         answerTrade: (faxId, accept) => { mutate((g) => answerTrade(g, faxId, accept)); },
+        listPlayer: (playerId, kind, ask) => { mutate((g) => (g.manager.clubId ? listPlayerFn(g, g.manager.clubId, playerId, kind, ask) : undefined)); },
         loanOut: (playerId) => { mutate((g, rng) => (g.manager.clubId ? loanOutPlayer(g, rng, g.manager.clubId, playerId) : undefined)); },
         renew: (playerId, wage, years) => { mutate((g) => renewContract(g, playerId, wage, years)); },
         release: (playerId) => { mutate((g) => releasePlayer(g, playerId)); },
