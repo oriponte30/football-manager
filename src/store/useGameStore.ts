@@ -23,6 +23,7 @@ import type { RecoveryChoice } from '../types/world';
 import type { DrillKind } from '../data/drills';
 import type { InstructionId } from '../data/instructions';
 import { INSTRUCTIONS } from '../data/instructions';
+import { topUpFreeAgents, needsCoverage } from '../engine/freeAgentPool';
 import { markWatched, startDayAfter, recoverySession, runDrill, repeatDrillPlan, answerPress, beginPrep } from '../engine/weekEngine';
 
 export type Screen = 'MATCHDAY' | 'TACTICS' | 'TRANSFERS' | 'CLUB' | 'NEWS';
@@ -402,7 +403,14 @@ export const useGameStore = create<GameStore>()(
       storage: createJSONStorage(() => safeStorage),
       partialize: (s) => ({ game: s.game }),
       onRehydrateStorage: () => (state) => {
-        if (state?.game) setTimeout(() => warmUpEngine(state.game as GameState), 0);
+        if (state?.game) {
+          setTimeout(() => {
+            warmUpEngine(state.game as GameState);
+            // saves made before the free-agent quotas existed get their pool restocked on opening
+            const cur = useGameStore.getState().game;
+            if (cur && needsCoverage(cur)) { const g = structuredClone(cur); topUpFreeAgents(g); useGameStore.setState({ game: g }); }
+          }, 0);
+        }
       },
       migrate: () => ({ game: null }),
       merge: (persisted, current) => {

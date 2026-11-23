@@ -360,8 +360,8 @@ export function resolveFaxesFor(g: GameState, bidId: string): void {
  */
 export function freeAgentChance(g: GameState, p: Player, buyer: Club, wage: number): { chance: number; hard: string | null; repHit: number } {
   const gap = p.ca - avgCa(g, buyer);
-  const star = p.ca >= 72 && p.age < 34;
-  if (buyer.tier >= 2 && (gap >= (p.age >= 33 ? 12 : 8) || star)) {
+  const star = p.ca >= 74 && p.age < 34;
+  if (buyer.tier >= 2 && (gap >= (p.age >= 33 ? 16 : 12) || star)) {
     return { chance: 0, hard: `Club reputation too low: ${p.lastName} will not drop down to a club of your level, whatever you pay.`, repHit: 1 };
   }
   // unemployed players are ~9 points more forgiving about stature than players at a club

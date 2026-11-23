@@ -187,7 +187,7 @@ describe('free agents: coverage, windows, signing odds', () => {
     expect(at(1.3)).toBeGreaterThan(0.8);
     expect(at(1.3)).toBeLessThan(0.93);
     expect(at(0.8)).toBeLessThan(0.05);
-    const star = { ...p, ca: Math.round(mine) + 10 } as typeof p;
+    const star = { ...p, ca: Math.round(mine) + 13 } as typeof p;
     expect(freeAgentChance(g, star, club, 1e9).chance).toBe(0);
     expect(freeAgentChance(g, star, club, 1e9).hard).toMatch(/reputation/i);
   });

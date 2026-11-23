@@ -12,6 +12,7 @@ import { supabase, setRememberDevice } from './client';
 import { useGameStore } from '../store/useGameStore';
 import { SAVE_VERSION } from '../engine/worldGenerator';
 import { warmUpEngine } from '../engine/seasonLoop';
+import { topUpFreeAgents, needsCoverage } from '../engine/freeAgentPool';
 import type { GameState } from '../types/world';
 import { encode, summarize, hasCareer, type SaveSummary } from './pack';
 import { decode } from './pack';
@@ -118,7 +119,11 @@ function loadIntoGame(g: GameState): void {
   applyingRemote = true;
   useGameStore.setState({ game: g, screen: 'MATCHDAY', dossierId: null, faxOpen: false, faxFocusId: null, newsOpen: false });
   applyingRemote = false;
-  setTimeout(() => warmUpEngine(g), 0);
+  setTimeout(() => {
+    warmUpEngine(g);
+    const cur = useGameStore.getState().game;
+    if (cur && needsCoverage(cur)) { const c = structuredClone(cur); topUpFreeAgents(c); useGameStore.setState({ game: c }); }
+  }, 0);
 }
 
 async function download(): Promise<GameState | null> {

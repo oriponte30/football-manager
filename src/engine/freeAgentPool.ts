@@ -3,7 +3,7 @@ import type { GameState, CountryCode } from '../types/world';
 import type { Position } from '../types/player';
 import { rollNationality } from '../data/nationalities';
 import { generatePlayer } from './playerGenerator';
-import type { Rng } from './rng';
+import { createRng, type Rng } from './rng';
 
 /** ability brackets, roughly Tier 3 / Tier 2 / Tier 1 squad level */
 const BRACKETS: { lo: number; hi: number; tier: 1 | 2 | 3 }[] = [
@@ -51,4 +51,23 @@ export function ensureFreeAgentCoverage(g: GameState, rng: Rng, country: Country
     let guard = 0;
     while (total < grp.min && guard++ < 12) add(guard % 3);
   }
+}
+
+/** True when some position group is short of free agents (e.g. a save made before the quotas existed). */
+export function needsCoverage(g: GameState): boolean {
+  const pool = g.freeAgentIds.map((id) => g.players[id]).filter(Boolean);
+  return GROUPS.some((grp) => {
+    const have = pool.filter((p) => grp.positions.includes(p.position));
+    if (have.length < grp.min) return true;
+    const counts = [0, 0, 0];
+    for (const p of have) counts[bracketOf(p.ca)]++;
+    return counts.some((c, b) => c < grp.perBracket[b]);
+  });
+}
+
+/** Stock the pool right now, deterministically (used when a save is opened). */
+export function topUpFreeAgents(g: GameState): boolean {
+  if (!needsCoverage(g)) return false;
+  ensureFreeAgentCoverage(g, createRng(g.idCounter * 31 + g.season.year * 7 + g.season.matchweek), g.activeCountry);
+  return true;
 }
