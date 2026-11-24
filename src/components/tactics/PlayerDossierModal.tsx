@@ -149,7 +149,7 @@ function OwnActions({ playerId }: { playerId: string }) {
           <input type="number" className="desk-input w-28" value={wage} step={50} onChange={(e) => setWage(Number(e.target.value))} />/wk
           <select className="desk-input" value={years} onChange={(e) => setYears(Number(e.target.value))}>{[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y} yr</option>)}</select>
         </div>
-        <button className="btn btn-green btn-sm mt-2" disabled={!!p.loanFromClubId} onClick={() => s.renew(p.id, wage, years)}>OFFER NEW DEAL</button>
+        <button className="btn btn-green btn-sm mt-2" disabled={!!p.loanFromClubId && p.loanFromClubId !== g.manager.clubId} onClick={() => s.renew(p.id, wage, years)}>OFFER NEW DEAL</button>
       </div>
       <div className="paper p-3">
         <div className="font-bold">Individual training</div>

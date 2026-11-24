@@ -6,7 +6,7 @@ import { INTAKE_WEEKS } from '../academyEngine';
 import { createRng } from '../rng';
 import { topUpFreeAgents } from '../freeAgentPool';
 import { generatePlayer } from '../playerGenerator';
-import { loanOutPlayer } from '../transferEngine';
+import { loanOutPlayer, renewContract } from '../transferEngine';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -118,6 +118,16 @@ describe('news, team stats and loans', () => {
 });
 
 describe('loans end', () => {
+  it('your own loanee can be renewed so he does not walk', () => {
+    const g = career(552);
+    const club = g.clubs[g.manager.clubId!];
+    const kid = club.playerIds.map((id) => g.players[id]).find((p) => p.age <= 21)!;
+    kid.contract.yearsLeft = 1;
+    loanOutPlayer(g, createRng(3), club.id, kid.id);
+    kid.moraleValue = 70;
+    expect(renewContract(g, kid.id, 99_999, 3).ok).toBe(true);
+    expect(kid.contract.yearsLeft).toBe(3);
+  });
   it('loanees go back to their parent club at rollover, both ways', () => {
     const g = career(551);
     const club = g.clubs[g.manager.clubId!];

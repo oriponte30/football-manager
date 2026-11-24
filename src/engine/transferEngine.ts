@@ -567,14 +567,14 @@ export function renewalDemand(g: GameState, p: Player): number {
 export function renewContract(g: GameState, playerId: string, wage: number, years: number): { ok: boolean; message: string } {
   const p = g.players[playerId];
   if (!p || !p.clubId) return { ok: false, message: 'Not under contract.' };
-  if (p.loanFromClubId) return { ok: false, message: 'Loanees cannot be renewed.' };
+  if (p.loanFromClubId && p.loanFromClubId !== g.manager.clubId) return { ok: false, message: 'Loanees cannot be renewed.' }; // your own players out on loan can be
   const lvl = moraleLevel(p.moraleValue);
   if (lvl <= 1) return { ok: false, message: `${p.lastName} is ${lvl === 0 ? 'furious' : 'unhappy'} and refuses to discuss a new deal. He wants out.` };
   if (years < 1 || years > 5) return { ok: false, message: 'Contracts run 1–5 years.' };
   if (p.age >= 33 && years > 2) return { ok: false, message: 'Veterans only sign 1–2 year deals.' };
   const demand = renewalDemand(g, p) * (lvl === 4 ? 0.92 : lvl === 3 ? 0.97 : 1.05);
   if (wage < demand) return { ok: false, message: `He wants at least ${fmtMoney(Math.round(demand / 10) * 10)}/wk.` };
-  const club = g.clubs[p.clubId];
+  const club = g.clubs[p.loanFromClubId ?? p.clubId];
   const cap = canAffordWage(g, club, wage - p.contract.wage);
   if (!cap.ok) return { ok: false, message: cap.message };
   p.contract.wage = Math.round(wage);
