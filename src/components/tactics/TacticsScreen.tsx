@@ -1,4 +1,5 @@
 import { useMemo, useState, type DragEvent } from 'react';
+import TeamStatsView from './TeamStatsView';
 import { Wand2, Dumbbell, Tag, ArrowUpDown, X } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, FitnessBar, MoraleIcon, FormDots, PosTag, Stars, staffStars, InjuryBadge, NationTag, paRead } from '../ui';
@@ -36,7 +37,7 @@ export default function TacticsScreen() {
   const s = useGameStore();
   const [sel, setSel] = useState<number | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
-  const [view, setView] = useState<'SQUAD' | 'ROSTER'>('SQUAD');
+  const [view, setView] = useState<'SQUAD' | 'ROSTER' | 'STATS'>('SQUAD');
   const t = club.tactics;
   const slots = FORMATIONS[t.formation].slots;
   const coach = staffStars(g, club, 'HEAD_COACH');
@@ -140,11 +141,14 @@ export default function TacticsScreen() {
             <div className="seg">
               <button className={view === 'SQUAD' ? 'on' : ''} onClick={() => setView('SQUAD')}>SQUAD</button>
               <button className={view === 'ROSTER' ? 'on' : ''} onClick={() => setView('ROSTER')}>ROSTER</button>
+              <button className={view === 'STATS' ? 'on' : ''} onClick={() => setView('STATS')}>TEAM STATS</button>
             </div>
             <div className="text-xs opacity-70">{sel !== null ? `Pick someone for ${slots[sel].pos}` : `${club.playerIds.length} players · bench ${t.bench.length}/7`}</div>
           </div>
           {view === 'SQUAD' ? (
             <SquadView focus={focus} setFocus={setFocus} sel={sel} setSel={setSel} pickOutsider={pickOutsider} />
+          ) : view === 'STATS' ? (
+            <TeamStatsView onPick={(id) => s.openDossier(id)} />
           ) : (
             <RosterView onPick={(p) => s.openDossier(p.id)} />
           )}

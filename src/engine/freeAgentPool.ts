@@ -24,7 +24,10 @@ const GROUPS: { positions: Position[]; min: number; perBracket: [number, number,
   { positions: ['ST'], min: 4, perBracket: [1, 1, 1] },
 ];
 /** largest the pool may grow per group, so no position floods the front page */
-const GROUP_CAP = [9, 10, 10, 12, 7, 10, 7];
+const GROUP_CAP = [9, 10, 10, 12, 7, 10, 5];
+/** at most this many free agents per group at 74+ (the rest have been snapped up elsewhere) */
+const ELITE_CA = 74;
+const ELITE_MAX = 2;
 
 /** A position for a filler free agent: whichever group is furthest below its share. */
 export function freeAgentPosition(g: GameState, rng: Rng): Position {
@@ -41,7 +44,9 @@ export function freeAgentPosition(g: GameState, rng: Rng): Position {
 export function balanceFreeAgents(g: GameState): void {
   GROUPS.forEach((grp, i) => {
     const have = g.freeAgentIds.map((id) => g.players[id]).filter((p) => p && grp.positions.includes(p.position)).sort((a, b) => (b.ca - b.age) - (a.ca - a.age));
-    for (const p of have.slice(GROUP_CAP[i])) { delete g.players[p.id]; delete g.scoutReports[p.id]; }
+    const gone = new Set(have.slice(GROUP_CAP[i]).map((p) => p.id));
+    for (const p of have.filter((x) => x.ca >= ELITE_CA).slice(ELITE_MAX)) gone.add(p.id);
+    for (const id of gone) { delete g.players[id]; delete g.scoutReports[id]; }
   });
   g.freeAgentIds = g.freeAgentIds.filter((id) => g.players[id]);
 }
@@ -78,7 +83,9 @@ export function ensureFreeAgentCoverage(g: GameState, rng: Rng, country: Country
 /** True when some position group is short of free agents (e.g. a save made before the quotas existed). */
 export function needsCoverage(g: GameState): boolean {
   const pool = g.freeAgentIds.map((id) => g.players[id]).filter(Boolean);
-  return GROUPS.some((grp) => {
+  return GROUPS.some((grp, gi) => {
+    const mine = pool.filter((p) => grp.positions.includes(p.position));
+    if (mine.length > GROUP_CAP[gi] || mine.filter((p) => p.ca >= ELITE_CA).length > ELITE_MAX) return true;
     const have = pool.filter((p) => grp.positions.includes(p.position));
     if (have.length < grp.min) return true;
     const counts = [0, 0, 0];
@@ -90,6 +97,7 @@ export function needsCoverage(g: GameState): boolean {
 /** Stock the pool right now, deterministically (used when a save is opened). */
 export function topUpFreeAgents(g: GameState): boolean {
   if (!needsCoverage(g)) return false;
+  balanceFreeAgents(g);
   ensureFreeAgentCoverage(g, createRng(g.idCounter * 31 + g.season.year * 7 + g.season.matchweek), g.activeCountry);
   return true;
 }

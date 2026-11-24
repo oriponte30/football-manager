@@ -4,6 +4,9 @@ import { acceptJob, advanceMatchweek, startNextSeason, SEASON_WEEKS } from '../s
 import { windowFor, windowWeeks, aiIncomingBids } from '../transferEngine';
 import { INTAKE_WEEKS } from '../academyEngine';
 import { createRng } from '../rng';
+import { topUpFreeAgents } from '../freeAgentPool';
+import { generatePlayer } from '../playerGenerator';
+import { loanOutPlayer } from '../transferEngine';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -65,6 +68,17 @@ describe('free agent mix and incoming bids', () => {
       expect(new Set(top.map((p) => p.position)).size).toBeGreaterThanOrEqual(5);
     }
   });
+  it('an old save flooded with strikers is rebalanced when opened', () => {
+    const g = career(531);
+    for (let i = 0; i < 40; i++) {
+      const p = generatePlayer(g, createRng(i + 1), { nationality: g.players[g.freeAgentIds[0]].nationality, country: 'ENG', position: 'ST', age: 27, targetOvr: 78, clubId: null, tier: 1 });
+      p.contract.yearsLeft = 0; g.players[p.id] = p; g.freeAgentIds.push(p.id);
+    }
+    expect(topUpFreeAgents(g)).toBe(true);
+    const top = g.freeAgentIds.map((id) => g.players[id]).sort((x, y) => y.ca - x.ca).slice(0, 20);
+    expect(top.filter((p) => p.position === 'ST').length).toBeLessThanOrEqual(5);
+    expect(new Set(top.map((p) => p.position)).size).toBeGreaterThanOrEqual(5);
+  });
   it('bids come more often, near market value, never for deadwood', () => {
     let bids = 0; let weeks = 0;
     for (const seed of [521, 522, 523, 524]) {
@@ -83,5 +97,45 @@ describe('free agent mix and incoming bids', () => {
       }
     }
     expect(bids / 4).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('news, team stats and loans', () => {
+  it('keeps the news short, counts team stats, and snapshots loans', () => {
+    const g = career(541);
+    const club = g.clubs[g.manager.clubId!];
+    club.board.value = 100; club.board.patience = 0.05;
+    const kid = club.playerIds.map((id) => g.players[id]).find((p) => p.age <= 21)!;
+    expect(loanOutPlayer(g, createRng(1), club.id, kid.id).ok).toBe(true);
+    expect(kid.loanStart?.ovr).toBe(kid.ca);
+    for (let w = 0; w < 14; w++) advanceMatchweek(g);
+    expect(g.news.length).toBeLessThanOrEqual(20);
+    expect(g.news.every((n) => g.season.matchweek - n.matchweek <= 10)).toBe(true);
+    expect(g.teamStats!.g).toBeGreaterThanOrEqual(11);
+    expect(g.teamStats!.w + g.teamStats!.d + g.teamStats!.l).toBe(g.teamStats!.g);
+    expect(g.teamStats!.poss / g.teamStats!.g).toBeGreaterThan(20);
+  });
+});
+
+describe('loans end', () => {
+  it('loanees go back to their parent club at rollover, both ways', () => {
+    const g = career(551);
+    const club = g.clubs[g.manager.clubId!];
+    club.board.value = 100; club.board.patience = 0.05;
+    const kid = club.playerIds.map((id) => g.players[id]).find((p) => p.age <= 21)!;
+    kid.contract.yearsLeft = 3;
+    expect(loanOutPlayer(g, createRng(2), club.id, kid.id).ok).toBe(true);
+    const dest = kid.clubId!;
+    expect(dest).not.toBe(club.id);
+    for (let w = 0; w < SEASON_WEEKS + 3; w++) advanceMatchweek(g);
+    if (g.status === 'SACKED') return;
+    expect(kid.loanFromClubId).toBe(club.id);
+    startNextSeason(g);
+    expect(kid.loanFromClubId).toBeNull();
+    expect(kid.clubId).toBe(club.id);
+    expect(club.playerIds).toContain(kid.id);
+    expect(g.clubs[dest].playerIds).not.toContain(kid.id);
+    expect(kid.loanStart).toBeUndefined();
+    expect(Object.values(g.players).filter((p) => p.loanFromClubId).length).toBe(0);
   });
 });

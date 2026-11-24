@@ -34,7 +34,7 @@ import { ensureFreeAgentCoverage, freeAgentPosition, balanceFreeAgents } from '.
 import { applyInjury, isKeyPlayer, rollInjury, tickRecovery, trainingInjuries } from './injuryEngine';
 import {
   newsClub, newsCupWinner, newsEuroWinner, newsGiantKilling, newsInjury, newsLeagueChampion, newsManager,
-  newsPurplePatch, newsWonderkidDebut, pruneNewsKeys, scanBreakouts,
+  newsPurplePatch, newsWonderkidDebut, pruneNews, pruneNewsKeys, scanBreakouts,
 } from './newsEngine';
 import { boardGoalFor, emptyLedger, initialEuroEntrants } from './worldGenerator';
 
@@ -196,7 +196,17 @@ function playFixture(g: GameState, wc: WeekCtx, fx: Fixture, knockout: boolean, 
   fx.winnerId = r.homeGoals > r.awayGoals ? home.id : r.homeGoals < r.awayGoals ? away.id : r.penalties ? (r.penalties.home > r.penalties.away ? home.id : away.id) : null;
   applyMatchEffects(g, wc, r, home, away, ctx);
   wc.lines.push({ fixtureId: fx.id, competition: fx.competition, homeId: home.id, awayId: away.id, homeGoals: r.homeGoals, awayGoals: r.awayGoals, penalties: r.penalties });
-  if (home.id === userId || away.id === userId) wc.userResults.push(r);
+  if (home.id === userId || away.id === userId) {
+    wc.userResults.push(r);
+    const mine = home.id === userId ? r.home : r.away;
+    const theirs = home.id === userId ? r.away : r.home;
+    let ts = g.teamStats;
+    if (!ts || ts.year !== g.season.year || ts.clubId !== userId) ts = g.teamStats = { year: g.season.year, clubId: userId as string, g: 0, w: 0, d: 0, l: 0, cs: 0, gf: 0, ga: 0, poss: 0, shots: 0, sot: 0, xg: 0, xgc: 0 };
+    ts.g++; ts.gf += mine.goals; ts.ga += theirs.goals;
+    if (mine.goals > theirs.goals) ts.w++; else if (mine.goals < theirs.goals) ts.l++; else ts.d++;
+    if (theirs.goals === 0) ts.cs++;
+    ts.poss += mine.possessionPct; ts.shots += mine.shots; ts.sot += mine.shotsOnTarget; ts.xg += mine.xg; ts.xgc += mine.xgc;
+  }
   return r;
 }
 
@@ -559,6 +569,7 @@ export function advanceMatchweek(g: GameState): void {
     aiIncomingBids(g, rng, userId);
     refreshShortlist(g, rng);
     maybeAiTradeFax(g, rng, userId);
+    balanceFreeAgents(g);
     ensureFreeAgentCoverage(g, rng, g.activeCountry); // AI clubs soak up free agents all season: keep every position stocked
     // scouting
     const ready = g.scouting.filter((s) => s.readySeason === g.season.year && s.readyWeek <= mw);
@@ -600,6 +611,7 @@ export function advanceMatchweek(g: GameState): void {
   g.lastSimMs = Math.round(simMs * 10) / 10;
   g.season.matchweek = mw + 1;
   g.season.window = windowFor(g.season.matchweek);
+  pruneNews(g);
   if (g.season.matchweek > SEASON_WEEKS) finalizeSeason(g, rng);
   if (pre) { g.phase = 'PREP'; g.dayAfter = { recovery: null, pressDone: false }; g.pressConference = null; }
   else afterMatchweek(g, rng);
@@ -929,6 +941,7 @@ export function startNextSeason(g: GameState): void {
     });
   }
   g.seasonSummary = null;
+  pruneNews(g);
   if (g.status !== 'SACKED') g.status = 'PLAYING';
   g.phase = 'PREP';
   g.watchedResults = [];

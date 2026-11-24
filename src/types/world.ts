@@ -31,6 +31,12 @@ export interface Country {
   flag: string;
 }
 
+export interface TeamSeasonStats {
+  year: number; clubId: string;
+  g: number; w: number; d: number; l: number; cs: number; gf: number; ga: number;
+  poss: number; shots: number; sot: number; xg: number; xgc: number;
+}
+
 export interface TableRow {
   clubId: string;
   p: number; w: number; d: number; l: number;
@@ -188,6 +194,8 @@ export interface GameState {
   dilemmaHistory?: string[];
   pressHistory?: string[];
   lastUserResults: MatchResult[];
+  /** user club season totals (all competitions), for the Team Stats view */
+  teamStats?: TeamSeasonStats;
   lastWeekResults: WeekResultLine[];
   history: SeasonRecord[];
   seasonSummary: SeasonSummary | null;

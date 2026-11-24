@@ -6,7 +6,7 @@ import { COUNTRIES } from '../../data/countries';
 
 /** Localised mastheads for the five nations' back pages. */
 const MASTHEAD: Record<CountryCode, { title: string; motto: string; price: string; city: string }> = {
-  ENG: { title: 'The Sunday Pitch', motto: 'All the football news that’s fit to print', price: '40p', city: 'London' },
+  ENG: { title: 'The Sunday Pitch', motto: 'All the football news that’s fit to print', price: '50p', city: 'London' },
   ESP: { title: 'El Balón Diario', motto: 'El diario deportivo de toda España', price: '125 ptas', city: 'Madrid' },
   ITA: { title: 'La Gazzetta del Campo', motto: 'Il quotidiano del calcio italiano', price: 'L. 1.500', city: 'Milano' },
   GER: { title: 'Der Anstoß', motto: 'Die Fußballzeitung der Republik', price: '1,50 DM', city: 'Frankfurt' },
@@ -63,14 +63,16 @@ export default function NewsTab() {
   const items = useMemo(() => (filter === 'MINE' ? g.news.filter((n) => n.myClub) : g.news), [g.news, filter]);
   const lead = useMemo(() => pickLead(items), [items]);
   const rest = items.filter((n) => n !== lead);
+  const wire = rest.filter((n) => n.weight < 3 || n.category === 'TRANSFER' || n.category === 'RUMOUR').slice(0, 9);
+  const main = rest.filter((n) => !wire.includes(n));
 
   return (
     <div className="broadsheet px-6 py-5 rotate-[-0.25deg]">
       {/* masthead */}
       <div className="flex items-end justify-between text-xs condensed">
-        <span>No. {issueNo} · {mh.city}</span>
+        <span>Vol. {g.season.year - 1993} · No. {issueNo} · {mh.city}</span>
         <span className="hidden sm:inline italic normal-case" style={{ fontFamily: "'Old Standard TT', serif" }}>“{mh.motto}”</span>
-        <span>Price {mh.price}</span>
+        <span>Late Edition · Price {mh.price}</span>
       </div>
       <h1 className="masthead text-center text-6xl md:text-7xl mt-1">{mh.title}</h1>
       <div className="rule-double mt-2" />
@@ -104,13 +106,23 @@ export default function NewsTab() {
       {rest.length > 0 && (
         <>
           <div className="rule-double" />
-          <div className="news-cols mt-3">
-            {rest.map((n) => <Brief key={n.id} n={n} country={country} />)}
+          <div className="grid md:grid-cols-3 mt-3">
+            <div className="md:col-span-2 md:border-r md:border-[#1a1a1a] md:pr-5">
+              <div className="news-cols">{main.map((n) => <Brief key={n.id} n={n} country={country} />)}</div>
+              {main.length === 0 && <div className="italic text-sm py-3">No other major stories today.</div>}
+            </div>
+            <aside className="md:pl-5 mt-4 md:mt-0">
+              <div className="border-2 border-[#1a1a1a] bg-[#ebe4d1] p-3">
+                <div className="condensed text-center font-bold tracking-widest border-b-2 border-double border-[#1a1a1a] pb-1">In Brief · Transfer Wire</div>
+                {wire.map((n) => <Brief key={n.id} n={n} country={country} />)}
+                {wire.length === 0 && <div className="italic text-sm py-2">Quiet on the wire.</div>}
+              </div>
+            </aside>
           </div>
         </>
       )}
       <div className="rule-thin mt-4" />
-      <div className="text-[11px] condensed text-center pt-1 opacity-70">Printed and published by the desk of {g.manager.name} · Archive keeps the last 60 stories</div>
+      <div className="text-[11px] condensed text-center pt-1 opacity-70">Printed and published by the desk of {g.manager.name} · Only the last ten matchweeks are kept</div>
     </div>
   );
 }

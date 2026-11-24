@@ -14,7 +14,15 @@ import { fullName } from './ratings';
 import { nextId } from './ids';
 import type { Rng } from './rng';
 
-export const NEWS_CAP = 60;
+export const NEWS_CAP = 20;
+const NEWS_MAX_AGE = 10; // matchweeks
+
+/** Drop stale stories: older than 10 matchweeks, and last season's, except its trophy wrap-up until matchweek 1. */
+export function pruneNews(g: GameState): void {
+  const mw = g.season.matchweek;
+  g.news = g.news.filter((n) => (n.year === g.season.year ? mw - n.matchweek <= NEWS_MAX_AGE : n.year === g.season.year - 1 && n.category === 'TROPHY' && mw <= 1));
+  if (g.news.length > NEWS_CAP) g.news.length = NEWS_CAP;
+}
 
 export interface NewsInput {
   category: NewsCategory;
@@ -41,7 +49,7 @@ export function addNews(g: GameState, n: NewsInput): NewsItem {
     weight: n.weight,
   };
   g.news.unshift(item);
-  if (g.news.length > NEWS_CAP) g.news.length = NEWS_CAP;
+  pruneNews(g);
   return item;
 }
 

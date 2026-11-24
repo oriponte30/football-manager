@@ -12,14 +12,14 @@ import { marketList, windowWeeks } from '../../engine/transferEngine';
 import { fmtMoney } from '../../engine/financeEngine';
 import { fullName } from '../../engine/ratings';
 
-type Tab = 'SHORTLIST' | 'TRANSFER' | 'FREE' | 'LOAN' | 'BIDS' | 'SCOUTING' | 'YOUTH';
+type Tab = 'SHORTLIST' | 'TRANSFER' | 'FREE' | 'LOAN' | 'LOANED' | 'BIDS' | 'SCOUTING' | 'YOUTH';
 const POS = ['ALL', 'GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST'];
 
 export default function TransfersScreen() {
   const g = useGame();
   const club = useUserClub();
   const [tab, setTab] = useState<Tab>(g.pendingYouth.length ? 'YOUTH' : 'SHORTLIST');
-  const tabs: [Tab, string][] = [['SHORTLIST', `Scout's shortlist (${liveShortlist(g).length})`], ['TRANSFER', 'Transfer market'], ['FREE', `Free agents (${g.freeAgentIds.length})`], ['LOAN', 'Loans'], ['BIDS', 'Faxed bids'], ['SCOUTING', `Scouting (${g.scouting.length})`], ['YOUTH', `Youth intake (${g.pendingYouth.length})`]];
+  const tabs: [Tab, string][] = [['SHORTLIST', `Scout's shortlist (${liveShortlist(g).length})`], ['TRANSFER', 'Transfer market'], ['FREE', `Free agents (${g.freeAgentIds.length})`], ['LOAN', 'Loans'], ['LOANED', `Loaned out (${Object.values(g.players).filter((p) => p.loanFromClubId === club.id).length})`], ['BIDS', 'Faxed bids'], ['SCOUTING', `Scouting (${g.scouting.length})`], ['YOUTH', `Youth intake (${g.pendingYouth.length})`]];
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
@@ -30,6 +30,7 @@ export default function TransfersScreen() {
       </div>
       {tab === 'SHORTLIST' && <Shortlist />}
       {(tab === 'TRANSFER' || tab === 'FREE' || tab === 'LOAN') && <Market kind={tab} />}
+      {tab === 'LOANED' && <LoanedOut />}
       {tab === 'BIDS' && <Bids />}
       {tab === 'SCOUTING' && <Scouting />}
       {tab === 'YOUTH' && <YouthIntakeFolder />}
@@ -237,5 +238,49 @@ function ScoutBrief() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoanedOut() {
+  const g = useGame();
+  const club = useUserClub();
+  const openDossier = useGameStore((s) => s.openDossier);
+  const rows = Object.values(g.players).filter((p) => p.loanFromClubId === club.id);
+  const left = Math.max(0, 31 - Math.max(1, g.season.matchweek));
+  return (
+    <CRTMonitor title="LOANED OUT: WHERE ARE THEY NOW" page="413">
+      {rows.length === 0 && <div className="t-dim">Nobody is out on loan. Players aged 23 and under can be loaned from their dossier, or put on the loan list.</div>}
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-base min-w-[700px]">
+            <thead className="t-dim"><tr><th>POS</th><th>PLAYER</th><th>AGE</th><th>LOAN CLUB</th><th>LEFT</th><th>APPS</th><th>G</th><th>A</th><th>AVG</th><th>OVR</th></tr></thead>
+            <tbody>
+              {rows.map((p) => {
+                const s = p.loanStart;
+                const apps = p.season.apps - (s?.apps ?? 0);
+                const rating = apps > 0 ? (p.season.ratingSum - (s?.ratingSum ?? 0)) / apps : 0;
+                const delta = p.ca - (s?.ovr ?? p.ca);
+                const dest = p.clubId ? g.clubs[p.clubId] : null;
+                return (
+                  <tr key={p.id} className="cursor-pointer hover:bg-white/10" onClick={() => openDossier(p.id)}>
+                    <td><PosTag pos={p.position} /></td>
+                    <td>{fullName(p)}</td>
+                    <td>{p.age}</td>
+                    <td>{dest ? `${dest.name} (T${dest.tier})` : '?'}</td>
+                    <td>{left} wk</td>
+                    <td>{apps}</td>
+                    <td>{p.season.goals - (s?.goals ?? 0)}</td>
+                    <td>{p.season.assists - (s?.assists ?? 0)}</td>
+                    <td>{apps ? rating.toFixed(2) : '–'}</td>
+                    <td className={delta > 0 ? 'text-green-300' : delta < 0 ? 'text-red-300' : ''}>{s?.ovr ?? p.ca} → {p.ca} ({delta > 0 ? '+' : ''}{delta})</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-2 t-dim text-base">They return in the summer. Growth depends only on minutes, ratings, age and the loan club's level: a kid on the bench does not improve.</div>
+    </CRTMonitor>
   );
 }

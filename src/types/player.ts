@@ -111,6 +111,8 @@ export interface Player {
   recentRatings: number[];
   /** the manager has put him in the shop window (transfer list / loan list) */
   listed?: { kind: 'TRANSFER' | 'LOAN'; ask: number; season: number; week: number };
+  /** snapshot when the manager loaned him out, so the tracker can show the loan's own numbers and OVR change */
+  loanStart?: { ovr: number; apps: number; goals: number; assists: number; ratingSum: number; minutes: number };
   /** free-agent talks this week with one club (limits repeat offers) */
   faTry?: { clubId: string; season: number; week: number; n: number };
 }

@@ -96,6 +96,10 @@ export function windowFor(mw: number): 'SUMMER' | 'WINTER' | 'CLOSED' {
   return 'CLOSED';
 }
 
+function markLoanStart(p: Player): void {
+  p.loanStart = { ovr: p.ca, apps: p.season.apps, goals: p.season.goals, assists: p.season.assists, ratingSum: p.season.ratingSum, minutes: p.season.minutes };
+}
+
 export const SUMMER_WINDOW_END = 5;
 /** Deals signed after the summer window keep their full term: the next rollover doesn't use up a year. */
 function stampFresh(g: GameState, c: Contract): void {
@@ -504,6 +508,7 @@ export function processLoanList(g: GameState, rng: Rng, userClubId: string): voi
     const fee = Math.round(valuePlayer(p) * 0.04 / 1000) * 1000;
     detachFromClub(g, p);
     p.loanFromClubId = userClubId;
+    markLoanStart(p);
     p.clubId = dest.id;
     dest.playerIds.push(p.id);
     delete p.listed;
@@ -529,6 +534,7 @@ export function loanOutPlayer(g: GameState, rng: Rng, clubId: string, playerId: 
   const dest = rng.pick(candidates);
   detachFromClub(g, p);
   p.loanFromClubId = clubId;
+  markLoanStart(p);
   p.clubId = dest.id;
   dest.playerIds.push(p.id);
   return { ok: true, message: `${fullName(p)} heads to ${dest.name} on a season-long loan for minutes.` };
@@ -545,6 +551,7 @@ export function returnLoans(g: GameState): void {
       if (p.contract.wage < 200) p.contract.wage = 200;
     } else g.freeAgentIds.push(p.id);
     p.loanFromClubId = null;
+    delete p.loanStart;
     delete p.listed;
   }
 }
