@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, Stars } from '../ui';
 import CRTMonitor from '../layout/CRTMonitor';
-import { fmtMoney, weeklyWageBill, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
+import { fmtMoney, weeklyWageBill, weeklyBill, spendable, RESERVE_WEEKS, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
 import { STAFF_ROLES, STAFF_ROLE_LABELS, type StaffRole } from '../../types/staff';
 import { starsFromInternal } from '../../engine/ratings';
 import { staffCeiling, staffInterest } from '../../engine/staffGenerator';
@@ -39,6 +39,8 @@ export default function ClubFinancesScreen() {
           {club.finances.bank < 0 && <div className="t-red">IN THE RED — new signings blocked, board confidence falling every week.</div>}
           <div className="grid grid-cols-2 gap-x-6 mt-2">
             <div className="t-white">WEEKLY WAGE BILL</div><div>{fmtMoney(wages.players + wages.staff)} <span className="t-dim">(players {fmtMoney(wages.players)}, staff {fmtMoney(wages.staff)})</span></div>
+            <div className="t-white">TRANSFER BUDGET</div><div className={spendable(g, club) > 0 ? 't-green' : 't-red'}>{fmtMoney(Math.max(0, spendable(g, club)))} <span className="t-dim">(bank minus {RESERVE_WEEKS} weeks of wages the board keeps back)</span></div>
+            <div className="t-white">CASH RUNWAY</div><div>{weeklyBill(g, club) > 0 ? `${Math.max(0, Math.floor(club.finances.bank / weeklyBill(g, club)))} weeks of wages in the bank` : '–'}</div>
             {cap !== null && <><div className="t-white">LEAGUE WAGE CAP</div><div>{fmtMoney(cap)}/wk ({Math.round((wages.players / cap) * 100)}% used)</div></>}
           </div>
           <div className="mt-3 t-cyan">CASH FLOW THIS SEASON</div>
@@ -53,7 +55,7 @@ export default function ClubFinancesScreen() {
             <Line k="Facilities" v={-L.facilities} />
           </div>
           <div className="mt-1 t-white">NET: <span className={income - spend >= 0 ? 't-green' : 't-red'}>{fmtMoney(income - spend)}</span></div>
-          <div className="t-dim text-base mt-1">TV money is paid at season end, scaled by tier, final position and fan interest ({COUNTRIES[club.country].name}: ×{COUNTRIES[club.country].tvMoneyMult}).</div>
+          <div className="t-dim text-base mt-1">TV money comes in weekly (70%, by your current league position) with a merit payment at season end (30%, by final position), scaled by tier and fan interest ({COUNTRIES[club.country].name}: ×{COUNTRIES[club.country].tvMoneyMult}).</div>
         </CRTMonitor>
 
         <div className="paper p-4">

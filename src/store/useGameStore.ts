@@ -380,7 +380,7 @@ export const useGameStore = create<GameStore>()(
             return res;
           });
         },
-        upgrade: (key) => { mutate((g) => { const c = userClubOf(g); return c ? upgradeFacility(c, key) : undefined; }); },
+        upgrade: (key) => { mutate((g) => { const c = userClubOf(g); return c ? upgradeFacility(c, key, g) : undefined; }); },
 
         markFaxRead: (id) => mutate((g) => {
           const f = g.faxes.find((x) => x.id === id);

@@ -36,6 +36,28 @@ export function weeklyWageBill(g: GameState, club: Club): { players: number; sta
   return { players, staff };
 }
 
+/** The board keeps this many weeks of wages untouchable: you can spend the rest. */
+export const RESERVE_WEEKS = 6;
+export function weeklyBill(g: GameState, club: Club): number {
+  const w = weeklyWageBill(g, club);
+  return w.players + w.staff;
+}
+/** Cash the board will let you spend on fees, bonuses and building work. */
+export function spendable(g: GameState, club: Club): number {
+  return club.finances.bank - RESERVE_WEEKS * weeklyBill(g, club);
+}
+export function noBudget(g: GameState, club: Club, cost: number): string | null {
+  const room = spendable(g, club);
+  if (cost <= room) return null;
+  return `The board won't sign that off: it would leave under ${RESERVE_WEEKS} weeks of wages in the bank. Your spending budget is ${fmtMoney(Math.max(0, room))}.`;
+}
+
+/** TV money arrives in weekly instalments (70%) with the rest as a merit payment at season end. */
+export const TV_WEEKLY_SHARE = 0.7;
+export function weeklyTV(club: Club, position: number): number {
+  return Math.round((tvMoney(club, position) * TV_WEEKLY_SHARE) / 30 / 100) * 100;
+}
+
 export function payWeeklyWages(g: GameState, club: Club): void {
   const w = weeklyWageBill(g, club);
   club.finances.bank -= w.players + w.staff;
@@ -66,10 +88,12 @@ export function facilityUpgradeCost(club: Club, key: FacilityKey): number | null
   return Math.round((FAC_BASE[key] * Math.pow(2.1, lvl - 1) * COUNTRIES[club.country].facilityCostMult) / 1000) * 1000;
 }
 
-export function upgradeFacility(club: Club, key: FacilityKey): { ok: boolean; message: string } {
+export function upgradeFacility(club: Club, key: FacilityKey, g?: GameState): { ok: boolean; message: string } {
   const cost = facilityUpgradeCost(club, key);
   if (cost === null) return { ok: false, message: 'Already at maximum level.' };
   if (club.finances.bank < cost) return { ok: false, message: 'Insufficient funds.' };
+  const nb = g ? noBudget(g, club, cost) : null;
+  if (nb) return { ok: false, message: nb };
   club.finances.bank -= cost;
   club.finances.ledger.facilities += cost;
   club.facilities[key] += 1;

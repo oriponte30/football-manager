@@ -7,6 +7,8 @@ import { createRng } from '../rng';
 import { topUpFreeAgents } from '../freeAgentPool';
 import { generatePlayer } from '../playerGenerator';
 import { loanOutPlayer, renewContract } from '../transferEngine';
+import { spendable, weeklyBill, RESERVE_WEEKS } from '../financeEngine';
+import { submitBid } from '../transferEngine';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -147,5 +149,25 @@ describe('loans end', () => {
     expect(g.clubs[dest].playerIds).not.toContain(kid.id);
     expect(kid.loanStart).toBeUndefined();
     expect(Object.values(g.players).filter((p) => p.loanFromClubId).length).toBe(0);
+  });
+});
+
+describe('finances make sense', () => {
+  it('TV money arrives weekly, and the board keeps six weeks of wages back', () => {
+    const g = career(561);
+    const club = g.clubs[g.manager.clubId!];
+    club.board.value = 100; club.board.patience = 0.05;
+    for (let w = 0; w < 3; w++) advanceMatchweek(g);
+    expect(club.finances.ledger.tv).toBe(0); // pre-season: no instalments yet
+    for (let w = 0; w < 4; w++) advanceMatchweek(g);
+    expect(club.finances.ledger.tv).toBeGreaterThan(0);
+    // a fee that fits in the bank but eats the wage reserve is refused
+    club.finances.bank = weeklyBill(g, club) * (RESERVE_WEEKS + 1);
+    expect(spendable(g, club)).toBe(weeklyBill(g, club));
+    g.season.window = 'SUMMER';
+    const target = Object.values(g.players).find((p) => p.clubId && p.clubId !== club.id && !p.loanFromClubId)!;
+    const r = submitBid(g, club.id, { playerId: target.id, fee: weeklyBill(g, club) * 3, wage: 1000, years: 3, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/board/);
   });
 });

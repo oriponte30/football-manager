@@ -20,7 +20,7 @@ import { refreshShortlist } from './shortlistEngine';
 import { applyResultToTable, emptyRow, resolveShadowLeague, sortedTable } from './shadowLeagueEngine';
 import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression } from './progressionEngine';
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
-import { gateReceipts, payWeeklyWages, credit, tvMoney, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
+import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, TV_WEEKLY_SHARE, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
 import {
   aiIncomingBids, aiWorldTransfers, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
 } from './transferEngine';
@@ -551,6 +551,7 @@ export function advanceMatchweek(g: GameState): void {
       }
     }
     payWeeklyWages(g, club);
+    if (!pre && mw <= SEASON_WEEKS) credit(club, weeklyTV(club, pos), 'tv');
     if (club.id !== userId && club.playerIds.length < 19) aiSignFreeAgent(g, rng, club);
   }
 
@@ -689,7 +690,7 @@ export function finalizeSeason(g: GameState, rng: Rng): void {
     sortedTable(lg.table).forEach((r, i) => {
       const c = g.clubs[r.clubId];
       const tv = tvMoney(c, i + 1);
-      credit(c, tv, 'tv');
+      credit(c, c.isShadow ? tv : Math.round(tv * (1 - TV_WEEKLY_SHARE)), 'tv'); // merit payment on final position; the rest came weekly
       if (c.isShadow) c.finances.bank -= Math.round(tv * 0.85);
       if (c.id === g.manager.clubId) userTV = tv;
     });
