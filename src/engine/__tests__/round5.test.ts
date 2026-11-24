@@ -153,7 +153,7 @@ describe('loans end', () => {
 });
 
 describe('finances make sense', () => {
-  it('TV money arrives weekly, and the board keeps six weeks of wages back', () => {
+  it('TV money arrives weekly, and the safe budget is only a guide', () => {
     const g = career(561);
     const club = g.clubs[g.manager.clubId!];
     club.board.value = 100; club.board.patience = 0.05;
@@ -161,13 +161,12 @@ describe('finances make sense', () => {
     expect(club.finances.ledger.tv).toBe(0); // pre-season: no instalments yet
     for (let w = 0; w < 4; w++) advanceMatchweek(g);
     expect(club.finances.ledger.tv).toBeGreaterThan(0);
-    // a fee that fits in the bank but eats the wage reserve is refused
+    // the budget is a guide: a fee that fits in the bank is not blocked by the board
     club.finances.bank = weeklyBill(g, club) * (RESERVE_WEEKS + 1);
     expect(spendable(g, club)).toBe(weeklyBill(g, club));
     g.season.window = 'SUMMER';
     const target = Object.values(g.players).find((p) => p.clubId && p.clubId !== club.id && !p.loanFromClubId)!;
     const r = submitBid(g, club.id, { playerId: target.id, fee: weeklyBill(g, club) * 3, wage: 1000, years: 3, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
-    expect(r.ok).toBe(false);
-    expect(r.message).toMatch(/board/);
+    expect(r.message).not.toMatch(/board/);
   });
 });

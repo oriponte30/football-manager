@@ -12,7 +12,7 @@ import { clamp, hash01, type Rng } from './rng';
 import { fullName, moraleLevel } from './ratings';
 import { nextId } from './ids';
 import { wageFor } from './playerGenerator';
-import { canAffordWage, credit, fmtMoney, noBudget } from './financeEngine';
+import { canAffordWage, credit, fmtMoney } from './financeEngine';
 import { newsTransfer } from './newsEngine';
 import { generateScoutReport, unscoutedOvrRange } from './scoutingEngine';
 
@@ -157,8 +157,6 @@ export function submitBid(g: GameState, buyerId: string, input: BidInput): { ok:
     return { ok: false, message: 'You already have a live bid for this player.' };
   }
   if (input.type === 'TRANSFER' && input.fee > buyer.finances.bank) return { ok: false, message: 'Not enough in the bank to cover that fee.' };
-  const over = input.type === 'TRANSFER' ? noBudget(g, buyer, input.fee) : null;
-  if (over) return { ok: false, message: over };
   const bid: TransferBid = {
     id: nextId(g, 'b'), type: input.type, direction: 'OUTGOING', playerId: p.id, buyerClubId: buyerId, sellerClubId: p.clubId,
     fee: input.type === 'LOAN' ? 0 : Math.max(0, Math.round(input.fee)), wage: Math.round(input.wage), years: input.type === 'LOAN' ? 1 : input.years,
@@ -316,7 +314,6 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
   if (bid.status !== 'ACCEPTED') return { ok: false, message: 'This deal is no longer available.' };
   if (buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: signings are frozen.' };
   if (bid.type === 'TRANSFER' && buyer.finances.bank < bid.fee) return { ok: false, message: 'Not enough funds for the fee.' };
-  if (bid.type === 'TRANSFER' && buyer.id === g.manager.clubId) { const nb = noBudget(g, buyer, bid.fee); if (nb) return { ok: false, message: nb }; }
 
   if (bid.type === 'LOAN') {
     const cost = Math.round(p.contract.wage * bid.loanWageShare);
@@ -422,8 +419,6 @@ export function signFreeAgent(g: GameState, clubId: string, playerId: string, wa
   if (!cap.ok) return { ok: false, message: cap.message };
   const bonus = signingBonus(g, p, club, wage);
   if (club.finances.bank < bonus) return { ok: false, message: `His agent wants a ${fmtMoney(bonus)} signing bonus. You can't cover it.` };
-  const nbBonus = noBudget(g, club, bonus);
-  if (nbBonus) return { ok: false, message: nbBonus };
   movePlayer(g, p, clubId);
   p.contract = { wage, yearsLeft: years, releaseClause: null };
   stampFresh(g, p.contract);
@@ -773,7 +768,6 @@ export function answerTrade(g: GameState, faxId: string, accept: boolean): { ok:
   if (!theirs || !mine || !partner || !userId || mine.clubId !== userId || theirs.clubId !== partner.id) return { ok: false, message: 'Deal fell through.' };
   const user = g.clubs[userId];
   if (t.cashAdjustment < 0 && user.finances.bank < -t.cashAdjustment) return { ok: false, message: 'Not enough cash to cover the balance.' };
-  if (t.cashAdjustment < 0) { const nb = noBudget(g, user, -t.cashAdjustment); if (nb) return { ok: false, message: nb }; }
   movePlayer(g, mine, partner.id);
   movePlayer(g, theirs, userId);
   user.finances.bank += t.cashAdjustment;

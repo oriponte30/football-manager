@@ -88,12 +88,10 @@ export function facilityUpgradeCost(club: Club, key: FacilityKey): number | null
   return Math.round((FAC_BASE[key] * Math.pow(2.1, lvl - 1) * COUNTRIES[club.country].facilityCostMult) / 1000) * 1000;
 }
 
-export function upgradeFacility(club: Club, key: FacilityKey, g?: GameState): { ok: boolean; message: string } {
+export function upgradeFacility(club: Club, key: FacilityKey, _g?: GameState): { ok: boolean; message: string } {
   const cost = facilityUpgradeCost(club, key);
   if (cost === null) return { ok: false, message: 'Already at maximum level.' };
   if (club.finances.bank < cost) return { ok: false, message: 'Insufficient funds.' };
-  const nb = g ? noBudget(g, club, cost) : null;
-  if (nb) return { ok: false, message: nb };
   club.finances.bank -= cost;
   club.finances.ledger.facilities += cost;
   club.facilities[key] += 1;

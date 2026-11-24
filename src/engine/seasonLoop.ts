@@ -20,7 +20,7 @@ import { refreshShortlist } from './shortlistEngine';
 import { applyResultToTable, emptyRow, resolveShadowLeague, sortedTable } from './shadowLeagueEngine';
 import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression } from './progressionEngine';
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
-import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, TV_WEEKLY_SHARE, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
+import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, TV_WEEKLY_SHARE, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
 import {
   aiIncomingBids, aiWorldTransfers, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
 } from './transferEngine';
@@ -558,6 +558,14 @@ export function advanceMatchweek(g: GameState): void {
   if (userId) {
     const userClub = g.clubs[userId];
     if (!pre) weeklyBoard(g, userClub);
+    // the finance director speaks up when cash gets thin (a warning, not a block)
+    const bill = weeklyBill(g, userClub);
+    const runway = bill > 0 ? userClub.finances.bank / bill : 99;
+    const cashKey = `cash:${Math.floor(mw / 4)}`;
+    if (runway >= 0 && runway < 4 && g.newsKeys[cashKey] !== g.season.year) {
+      g.newsKeys[cashKey] = g.season.year;
+      fax(g, { kind: 'NEWS', from: 'Finance Director', title: 'CASH WARNING', body: `The bank covers only ${Math.floor(runway)} week${Math.floor(runway) === 1 ? '' : 's'} of wages. If it goes below zero, all signings are frozen and the board's patience runs out. Sell, or hold off on spending.`, resolved: true });
+    }
     // transfers
     for (const b of g.bids) {
       if (b.direction === 'OUTGOING' && b.status === 'PENDING' && b.resolveWeek <= mw && b.season === g.season.year) resolveOutgoingBid(g, rng, b);
