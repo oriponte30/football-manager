@@ -13,7 +13,7 @@ import { FORMATIONS } from '../data/formations';
 import { createRng, clamp, type Rng } from './rng';
 import { nextId } from './ids';
 import { simulateMatch, type TeamSheet } from './matchEngine';
-import { fillLineup, preferredRoles, sanitiseRoles, squadStrength } from './lineup';
+import { fillLineup, preferredRoles, sanitiseRoles, squadStrength, syncBench } from './lineup';
 import { afterMatchFamiliarity, initFamiliarity, matchFamiliarity } from './familiarityEngine';
 import { afterMatchweek } from './weekEngine';
 import { refreshShortlist } from './shortlistEngine';
@@ -31,7 +31,7 @@ import { fullName, starsFromInternal } from './ratings';
 import { generatePlayer, SQUAD_TEMPLATE, emptySeasonStats, wageFor } from './playerGenerator';
 import { rollNationality } from '../data/nationalities';
 import { ensureFreeAgentCoverage, freeAgentPosition, balanceFreeAgents } from './freeAgentPool';
-import { applyInjury, isKeyPlayer, rollInjury, tickRecovery, trainingInjuries } from './injuryEngine';
+import { applyInjury, isKeyPlayer, rollInjury, tickRecovery, tickRecoveryWithAlert, trainingInjuries } from './injuryEngine';
 import {
   newsClub, newsCupWinner, newsEuroWinner, newsGiantKilling, newsInjury, newsLeagueChampion, newsManager,
   newsPurplePatch, newsWonderkidDebut, pruneNews, pruneNewsKeys, scanBreakouts,
@@ -319,7 +319,7 @@ function playCupRound(g: GameState, wc: WeekCtx, idx: number): void {
   }
   if (isFinal && round.ties[0]?.winnerId) {
     g.cup.championId = round.ties[0].winnerId;
-    credit(g.clubs[g.cup.championId], 1_000_000, 'prize');
+    credit(g.clubs[g.cup.championId], 400_000, 'prize');
     const fin = round.ties[0];
     newsCupWinner(g, wc.rng, g.clubs[g.cup.championId], g.cup.name, g.clubs[fin.winnerId === fin.homeId ? fin.awayId : fin.homeId] ?? null);
   }
@@ -493,6 +493,7 @@ export function advanceMatchweek(g: GameState): void {
   const rng = createRng(g.rngState);
   const mw = g.season.matchweek;
   const wc: WeekCtx = { rng, strength: {}, weekStats: {}, clubResults: {}, lines: [], userResults: [] };
+  if (g.manager.clubId && g.clubs[g.manager.clubId]) syncBench(g, g.clubs[g.manager.clubId]); // bench full before every matchday
 
   // midweek: European Cup and domestic cup
   const pre = mw < 1;
@@ -540,7 +541,7 @@ export function advanceMatchweek(g: GameState): void {
       const p = g.players[id];
       if (!p) continue;
       // a knock picked up this weekend doesn't start healing until next week
-      if (p.injuryWeeks > 0) { if (!(p.injury && p.injury.year === g.season.year && p.injury.matchweek === mw)) tickRecovery(p); }
+      if (p.injuryWeeks > 0) { if (!(p.injury && p.injury.year === g.season.year && p.injury.matchweek === mw)) tickRecoveryWithAlert(g, p); }
       else p.fitness = Math.min(100, p.fitness + 20 + physio * 3 + extra);
     }
     // rare training-ground knocks

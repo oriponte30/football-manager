@@ -9,4 +9,6 @@ export interface InjuryRecord {
   source: 'MATCH' | 'TRAINING';
   year: number;
   matchweek: number;
+  /** where he stood in the manager's plans when he got hurt */
+  roleBeforeInjury?: 'STARTER' | 'TOP_BENCH' | 'RESERVE';
 }

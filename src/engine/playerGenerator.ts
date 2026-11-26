@@ -1,4 +1,5 @@
 import type { CountryCode, GameState, Tier } from '../types/world';
+import { primeWage } from './economy';
 import { COUNTRY_CODES } from '../types/world';
 import type { CareerCurve, NationCode, Player, PlayerStats, Position, Trait, StatKey } from '../types/player';
 import { ALL_STATS } from '../types/player';
@@ -72,9 +73,9 @@ const POS_WAGE: Record<Position, number> = {
 };
 
 export function wageFor(ca: number, tier: Tier, country: CountryCode, pos: Position): number {
-  const base = 320 * Math.pow(1.088, ca - 40);
-  const tierMult = tier === 1 ? 1.3 : tier === 2 ? 1.0 : 0.85;
-  return Math.round((base * tierMult * COUNTRIES[country].wageMult * POS_WAGE[pos]) / 10) * 10;
+  const tierMult = tier === 1 ? 1.05 : tier === 2 ? 1.0 : 0.9;
+  const countryMult = 1 + (COUNTRIES[country].wageMult - 1) * 0.5;
+  return Math.round((primeWage(ca) * tierMult * countryMult * POS_WAGE[pos]) / 10) * 10;
 }
 
 export interface GenPlayerOpts {

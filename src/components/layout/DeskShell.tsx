@@ -34,6 +34,8 @@ export default function DeskShell() {
   const [ringing, setRinging] = useState(false);
   const [dilemmaLater, setDilemmaLater] = useState<string | null>(null);
   const quietPhase = g.phase === 'MATCHDAY' || simming;
+  const alerts = g.medicalAlerts ?? [];
+  const showMedical = alerts.length > 0 && !quietPhase && !faxOpen && !g.dilemma;
   const showDilemma = !!g.dilemma && !quietPhase && !faxOpen && dilemmaLater !== g.dilemma.id;
 
   // urgent paperwork: the fax machine rings, prints, and lands on your desk
@@ -120,6 +122,7 @@ export default function DeskShell() {
         </div>
       </main>
       {g.status === 'SEASON_END' && g.seasonSummary && g.phase !== 'MATCHDAY' && <SeasonSummaryModal />}
+      {showMedical && <MedicalModal />}
       {showDilemma && <DilemmaModal onLater={() => setDilemmaLater(g.dilemma!.id)} />}
       {newsOpen && (
         <Modal onClose={() => setNewsOpen(false)} wide>
@@ -174,6 +177,31 @@ function NewsCrawl() {
       </span>
       <span className="crawl-open">READ ▸</span>
     </button>
+  );
+}
+
+function MedicalModal() {
+  const g = useGame();
+  const ack = useGameStore((s) => s.ackMedical);
+  const alerts = g.medicalAlerts ?? [];
+  const injured = alerts.some((a) => a.kind === 'INJURED');
+  return (
+    <Modal onClose={() => ack(false)}>
+      <div className="manila p-5 pt-6 mt-8 paper-drop">
+        <div className="manila-tab">{injured ? 'MEDICAL ALERT' : 'CLEARED TO PLAY'}</div>
+        <div className="space-y-3">
+          {alerts.map((a) => (
+            <div key={a.id} className="font-type text-lg leading-6">
+              <b className={a.kind === 'INJURED' ? 'text-red-800' : 'text-green-900'}>{a.kind === 'INJURED' ? '+ INJURED: ' : '✓ CLEARED TO PLAY: '}</b>{a.text}
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex gap-2 flex-wrap">
+          <button className="btn btn-green" onClick={() => ack(true)}>GO TO TACTICS</button>
+          <button className="btn" onClick={() => ack(false)}>LATER</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

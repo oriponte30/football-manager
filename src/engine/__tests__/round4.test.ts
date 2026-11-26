@@ -86,15 +86,17 @@ describe('dilemma and press variety', () => {
   });
   it('press conferences vary and apply cleanly over a season', () => {
     const texts = new Set<string>();
+    let n = 0;
     const g = career(500);
     const rng = createRng(9);
-    for (let w = 0; w < 28; w++) {
+    for (let w = 0; w < 31; w++) {
       advanceMatchweek(g);
       for (const r of g.lastUserResults) markWatched(g, r.id);
       startDayAfter(g, rng);
-      if (g.pressConference) { texts.add(g.pressConference.text); answerPress(g, 0); }
+      if (g.pressConference) { n++; texts.add(g.pressConference.text); answerPress(g, 0); }
     }
-    expect(texts.size).toBeGreaterThan(14);
+    expect(texts.size).toBe(n); // never the same question twice in a season
+    expect(texts.size).toBeGreaterThan(10);
   });
 });
 

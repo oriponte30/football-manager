@@ -13,7 +13,8 @@ import type { Pressing } from '../types/tactics';
 import type { InjuryRecord } from '../types/injury';
 import { INJURY_TIERS } from '../data/injuries';
 import type { Rng } from './rng';
-import { fillLineup } from './lineup';
+import { fillLineup, syncBench } from './lineup';
+import { fullName } from './ratings';
 
 /** Base injury chance per player per possession at full fitness. */
 export const MATCH_INJURY_BASE = 0.00007;
@@ -73,6 +74,8 @@ export function applyInjury(g: GameState, p: Player, rec: InjuryRecord): void {
   const club = p.clubId ? g.clubs[p.clubId] : null;
   if (club) {
     const wasStarting = club.tactics.lineup.includes(p.id);
+    const topBench = [...club.tactics.bench].map((id) => g.players[id]).filter(Boolean).sort((a, b) => b.ca - a.ca).slice(0, 3).some((x) => x.id === p.id);
+    rec.roleBeforeInjury = wasStarting ? 'STARTER' : topBench ? 'TOP_BENCH' : 'RESERVE';
     club.tactics.lineup = club.tactics.lineup.map((id) => (id === p.id ? null : id));
     club.tactics.bench = club.tactics.bench.filter((id) => id !== p.id);
     club.tactics.trainingTags = club.tactics.trainingTags.filter((id) => id !== p.id);
@@ -82,6 +85,26 @@ export function applyInjury(g: GameState, p: Player, rec: InjuryRecord): void {
       club.tactics.lineup = sel.lineup;
       club.tactics.bench = club.tactics.bench.filter((id) => !sel.lineup.includes(id));
     }
+    if (club.id === g.manager.clubId) {
+      syncBench(g, club);
+      if (rec.roleBeforeInjury === 'STARTER') {
+        addMedicalAlert(g, 'INJURED', p, `${fullName(p)} (${p.position}) is out for ${rec.weeksTotal} week${rec.weeksTotal > 1 ? 's' : ''} with ${/^[aeiou]/i.test(rec.name) ? 'an' : 'a'} ${rec.name.toLowerCase()}. He was in your starting XI: check your replacement.`);
+      }
+    }
+  }
+}
+
+export function addMedicalAlert(g: GameState, kind: 'INJURED' | 'CLEARED', p: Player, text: string): void {
+  g.medicalAlerts = [...(g.medicalAlerts ?? []).filter((a) => a.playerId !== p.id), { id: `${kind}:${p.id}:${g.season.year}:${g.season.matchweek}`, kind, playerId: p.id, text }];
+}
+
+/** Tick a player's recovery; if he is back and mattered to the manager, raise a CLEARED alert. */
+export function tickRecoveryWithAlert(g: GameState, p: Player): void {
+  const rec = p.injury;
+  tickRecovery(p);
+  if (!rec || p.injuryWeeks > 0) return;
+  if (p.clubId && p.clubId === g.manager.clubId && (rec.roleBeforeInjury === 'STARTER' || rec.roleBeforeInjury === 'TOP_BENCH')) {
+    addMedicalAlert(g, 'CLEARED', p, `${fullName(p)} (${p.position}, OVR ${p.ca}) is fit again. He ${rec.roleBeforeInjury === 'STARTER' ? 'was a starter' : 'was a top bench option'} before the injury: put him back in your plans.`);
   }
 }
 

@@ -9,6 +9,11 @@ import { generatePlayer } from '../playerGenerator';
 import { loanOutPlayer, renewContract } from '../transferEngine';
 import { spendable, weeklyBill, RESERVE_WEEKS } from '../financeEngine';
 import { submitBid } from '../transferEngine';
+import { syncBench } from '../lineup';
+import { applyInjury, tickRecoveryWithAlert } from '../injuryEngine';
+import { valuePlayer } from '../transferEngine';
+import { wageFor } from '../playerGenerator';
+import type { Player } from '../../types/player';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -168,5 +173,56 @@ describe('finances make sense', () => {
     const target = Object.values(g.players).find((p) => p.clubId && p.clubId !== club.id && !p.loanFromClubId)!;
     const r = submitBid(g, club.id, { playerId: target.id, fee: weeklyBill(g, club) * 3, wage: 1000, years: 3, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
     expect(r.message).not.toMatch(/board/);
+  });
+});
+
+describe('bench and medical alerts', () => {
+  it('keeps seven on the bench with a backup keeper, never overwriting manual picks', () => {
+    const g = career(571);
+    const club = g.clubs[g.manager.clubId!];
+    club.tactics.bench = [];
+    syncBench(g, club);
+    expect(club.tactics.bench).toHaveLength(7);
+    expect(club.tactics.bench.some((id) => g.players[id].position === 'GK')).toBe(true);
+    const keep = club.tactics.bench[3];
+    club.tactics.bench = [keep];
+    syncBench(g, club);
+    expect(club.tactics.bench[0]).toBe(keep);
+    expect(club.tactics.bench).toHaveLength(7);
+  });
+  it('flags an injured starter and a recovered one, and refills the bench', () => {
+    const g = career(572);
+    const club = g.clubs[g.manager.clubId!];
+    const starter = g.players[club.tactics.lineup.find(Boolean) as string];
+    applyInjury(g, starter, { name: 'Hamstring Strain', severity: 'MINOR', weeksTotal: 1, source: 'TRAINING', year: g.season.year, matchweek: 1 });
+    expect(starter.injury?.roleBeforeInjury).toBe('STARTER');
+    expect(g.medicalAlerts?.some((a) => a.kind === 'INJURED' && a.playerId === starter.id)).toBe(true);
+    expect(club.tactics.bench).toHaveLength(7);
+    expect(club.tactics.bench).not.toContain(starter.id);
+    g.medicalAlerts = [];
+    tickRecoveryWithAlert(g, starter);
+    expect(g.medicalAlerts?.some((a) => a.kind === 'CLEARED')).toBe(true);
+  });
+});
+
+describe('1990s valuation', () => {
+  const mk = (ca: number, age: number, pa: number, position = 'CM', years = 3) => ({ ca, age, truePA: pa, paSeed: 1, position, contract: { yearsLeft: years } }) as unknown as Player;
+  it('follows the exponential price scale, with the right modifiers', () => {
+    const v = (ca: number) => valuePlayer(mk(ca, 25, ca));
+    expect(v(58)).toBeGreaterThanOrEqual(60_000); expect(v(65)).toBeLessThanOrEqual(500_000);
+    expect(v(70)).toBeGreaterThanOrEqual(600_000); expect(v(75)).toBeLessThanOrEqual(2_500_000);
+    expect(v(80)).toBeGreaterThanOrEqual(3_000_000); expect(v(84)).toBeLessThanOrEqual(7_500_000);
+    expect(v(85)).toBeGreaterThanOrEqual(8_000_000); expect(v(90)).toBeGreaterThanOrEqual(15_000_000);
+    expect(valuePlayer(mk(72, 20, 86))).toBeGreaterThan(valuePlayer(mk(75, 31, 75)));
+    expect(valuePlayer(mk(80, 25, 80, 'GK'))).toBeLessThan(valuePlayer(mk(80, 25, 80, 'CB')) * 0.9);
+    expect(valuePlayer(mk(80, 25, 80, 'ST'))).toBeGreaterThan(valuePlayer(mk(80, 25, 80, 'CB')) * 1.1);
+    expect(valuePlayer(mk(80, 25, 80, 'CM', 1))).toBeLessThan(valuePlayer(mk(80, 25, 80, 'CM', 3)) * 0.75);
+    expect(valuePlayer(mk(80, 33, 80))).toBeLessThan(v(80) * 0.3);
+  });
+  it('wages sit on the same scale', () => {
+    expect(wageFor(60, 3, 'ENG', 'CM')).toBeLessThan(2_500);
+    expect(wageFor(70, 2, 'ENG', 'CM')).toBeLessThan(8_000);
+    expect(wageFor(80, 1, 'ENG', 'CM')).toBeLessThan(25_000);
+    expect(wageFor(88, 1, 'ENG', 'CM')).toBeGreaterThan(30_000);
   });
 });

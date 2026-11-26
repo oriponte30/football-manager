@@ -133,3 +133,22 @@ export function changeFormation(club: Club, f: FormationId): void {
   // nothing is lost until a match is actually played in the new shape
   club.familiarity = club.familiarityByFormation?.[f] ?? 35;
 }
+
+/**
+ * Keep the user's bench full: only EMPTY slots are filled, nothing the manager placed is touched.
+ * First a healthy backup keeper if there isn't one, then the best healthy reserves by OVR.
+ */
+export function syncBench(g: GameState, club: Club): void {
+  const t = club.tactics;
+  const inXI = new Set(t.lineup.filter(Boolean) as string[]);
+  const ok = (id: string) => { const p = g.players[id]; return !!p && p.clubId === club.id && p.injuryWeeks === 0 && !inXI.has(id); };
+  const bench = t.bench.filter(ok);
+  const pool = club.playerIds.map((id) => g.players[id]).filter((p) => p && ok(p.id) && !bench.includes(p.id)).sort((a, b) => b.ca - a.ca);
+  const target = Math.min(7, bench.length + pool.length);
+  if (!bench.some((id) => g.players[id].position === 'GK') && bench.length < target) {
+    const gk = pool.find((p) => p.position === 'GK');
+    if (gk) { bench.push(gk.id); pool.splice(pool.indexOf(gk), 1); }
+  }
+  for (const p of pool) { if (bench.length >= target) break; bench.push(p.id); }
+  t.bench = bench;
+}

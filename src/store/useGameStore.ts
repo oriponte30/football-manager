@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { syncBench } from '../engine/lineup';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import type { CountryCode, GameState } from '../types/world';
 import type { FormationId, TeamDials, PlayerRole, Duty, TeamTrainingFocus } from '../types/tactics';
@@ -80,6 +81,8 @@ interface GameStore {
   beginPrep(): void;
   setInstruction(slot: number, id: InstructionId | null): void;
   clearUrgentFaxes(): void;
+  /** dismiss the pending medical alerts; go=true jumps to the Tactics screen */
+  ackMedical(go: boolean): void;
   setScoutBrief(focus: string, country: CountryCode | 'ANY'): void;
 
   setFormation(f: FormationId): void;
@@ -190,7 +193,7 @@ export const useGameStore = create<GameStore>()(
             i++;
             const after = get().game;
             // stop early when something needs the manager
-            if (after && (after.urgentFaxIds.length > 0 || after.dilemma)) { set({ simming: false }); return; }
+            if (after && (after.urgentFaxIds.length > 0 || after.dilemma || (after.medicalAlerts?.length ?? 0) > 0)) { set({ simming: false }); return; }
             setTimeout(step, 40);
           };
           step();
@@ -255,6 +258,7 @@ export const useGameStore = create<GameStore>()(
         }),
         setScoutBrief: (focus, country) => { mutate((g) => setScoutBrief(g, focus, country)); },
         clearUrgentFaxes: () => mutate((g) => { g.urgentFaxIds = []; }, true),
+        ackMedical: (go) => { mutate((g) => { g.medicalAlerts = []; }, true); if (go) set({ screen: 'TACTICS' }); },
         nextSeason: () => {
           const cur = get().game;
           if (!cur) return;
@@ -298,6 +302,7 @@ export const useGameStore = create<GameStore>()(
           c.tactics.lineup = l;
           c.tactics.bench = c.tactics.bench.filter((id) => id !== playerId);
           if (prev && existing < 0 && c.tactics.bench.length < 7) c.tactics.bench.push(prev);
+          syncBench(g, c);
         }),
         setRole: (slot, role) => mutate((g) => {
           const c = userClubOf(g);

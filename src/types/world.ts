@@ -31,6 +31,13 @@ export interface Country {
   flag: string;
 }
 
+export interface MedicalAlert {
+  id: string;
+  kind: 'INJURED' | 'CLEARED';
+  playerId: string;
+  text: string;
+}
+
 export interface TeamSeasonStats {
   year: number; clubId: string;
   g: number; w: number; d: number; l: number; cs: number; gf: number; ga: number;
@@ -196,6 +203,8 @@ export interface GameState {
   lastUserResults: MatchResult[];
   /** user club season totals (all competitions), for the Team Stats view */
   teamStats?: TeamSeasonStats;
+  /** pending medical alerts for the manager: someone important is hurt, or back and forgotten */
+  medicalAlerts?: MedicalAlert[];
   lastWeekResults: WeekResultLine[];
   history: SeasonRecord[];
   seasonSummary: SeasonSummary | null;

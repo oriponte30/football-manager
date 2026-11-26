@@ -5,8 +5,9 @@ import type { CompetitionKind } from '../types/match';
 import { COUNTRIES } from '../data/countries';
 import { clamp } from './rng';
 
-const TICKET: Record<Tier, number> = { 1: 26, 2: 14, 3: 8 };
-const TV_BASE: Record<Tier, number> = { 1: 6_000_000, 2: 1_300_000, 3: 260_000 };
+// 1990s scale: income is tuned so a club's gates and TV money only just cover its wage bill
+const TICKET: Record<Tier, number> = { 1: 11.5, 2: 5.3, 3: 3.5 };
+const TV_BASE: Record<Tier, number> = { 1: 2_600_000, 2: 450_000, 3: 110_000 };
 const WAGE_BASELINE: Record<Tier, number> = { 1: 320_000, 2: 75_000, 3: 28_000 };
 
 export function attendance(home: Club, away: Club, isDerby: boolean, competition: CompetitionKind): number {
@@ -76,11 +77,11 @@ export function tvMoney(club: Club, position: number): number {
   return Math.round(TV_BASE[club.tier] * COUNTRIES[club.country].tvMoneyMult * posFactor * fanFactor / 1000) * 1000;
 }
 
-export const CUP_PRIZE = [40_000, 90_000, 180_000, 350_000, 700_000, 1_500_000];
-export const EURO_PRIZE = { group: 900_000, win: 150_000, qf: 1_200_000, sf: 2_000_000, final: 3_500_000, champion: 5_000_000 };
+export const CUP_PRIZE = [15_000, 30_000, 60_000, 120_000, 250_000, 500_000];
+export const EURO_PRIZE = { group: 350_000, win: 60_000, qf: 450_000, sf: 800_000, final: 1_400_000, champion: 2_000_000 };
 
 export type FacilityKey = keyof Facilities;
-const FAC_BASE: Record<FacilityKey, number> = { stadium: 420_000, training: 300_000, youth: 260_000 };
+const FAC_BASE: Record<FacilityKey, number> = { stadium: 190_000, training: 135_000, youth: 120_000 };
 
 export function facilityUpgradeCost(club: Club, key: FacilityKey): number | null {
   const lvl = club.facilities[key];

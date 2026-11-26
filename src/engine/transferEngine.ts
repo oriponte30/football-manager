@@ -2,6 +2,8 @@
  * Valuation, the 3 signing pipelines (free agents, loans, transfers), rare
  * player trades, release clauses and contract pressure.
  */
+import { primeValue, ageDepreciation } from './economy';
+import { syncBench } from './lineup';
 import type { GameState } from '../types/world';
 import type { Club } from '../types/club';
 import type { Contract, Player } from '../types/player';
@@ -16,17 +18,21 @@ import { canAffordWage, credit, fmtMoney } from './financeEngine';
 import { newsTransfer } from './newsEngine';
 import { generateScoutReport, unscoutedOvrRange } from './scoutingEngine';
 
-const POS_VALUE: Record<string, number> = { GK: 0.8, CB: 0.95, LB: 0.9, RB: 0.9, CDM: 0.95, CM: 1, CAM: 1.1, LW: 1.08, RW: 1.08, ST: 1.18 };
+const POS_VALUE: Record<string, number> = { GK: 0.85, CB: 1, LB: 1, RB: 1, CDM: 1, CM: 1, CAM: 1.15, LW: 1.15, RW: 1.15, ST: 1.15 };
+const CONTRACT_VALUE = [0.25, 0.7, 0.9, 1];
 
-/** Player valuation from CA, (market-estimated) PA, age, position and contract length. */
+/**
+ * Player valuation on the 1990s scale: an exponential curve in ability, lifted for young players
+ * with headroom, steeply cut after 27, attackers dearer, keepers cheaper, short contracts cheaper.
+ */
 export function valuePlayer(p: Player, yearsOverride?: number): number {
   const years = yearsOverride ?? p.contract.yearsLeft;
   const marketPA = p.truePA + (hash01(p.paSeed, 'market') - 0.5) * 10;
-  let v = 25_000 * Math.pow(1.13, p.ca - 45);
-  if (p.age <= 23) v += 25_000 * Math.pow(1.13, Math.max(p.ca, marketPA) - 45) * 0.32 * ((24 - p.age) / 7);
-  if (p.age > 29) v *= Math.max(0.18, 1 - 0.13 * (p.age - 29));
+  const youth = Math.max(0, Math.min(1, (24 - p.age) / 6)); // 1 at 18 and under, 0 from 24
+  const effective = p.ca + Math.max(0, marketPA - p.ca) * 0.55 * youth;
+  let v = primeValue(effective) * ageDepreciation(p.age);
   v *= POS_VALUE[p.position] ?? 1;
-  v *= years <= 0 ? 0.25 : 0.55 + 0.15 * Math.min(4, years);
+  v *= CONTRACT_VALUE[Math.max(0, Math.min(3, years))];
   const round = v >= 1e6 ? 50_000 : v >= 1e5 ? 5_000 : 1_000;
   return Math.max(5_000, Math.round(v / round) * round);
 }
@@ -284,6 +290,7 @@ function detachFromClub(g: GameState, p: Player): void {
   c.playerIds = c.playerIds.filter((id) => id !== p.id);
   c.tactics.lineup = c.tactics.lineup.map((id) => (id === p.id ? null : id));
   c.tactics.bench = c.tactics.bench.filter((id) => id !== p.id);
+  if (c.id === g.manager.clubId) syncBench(g, c);
   c.tactics.trainingTags = c.tactics.trainingTags.filter((id) => id !== p.id);
 }
 
