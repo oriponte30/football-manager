@@ -25,6 +25,8 @@ export interface SeasonLedger {
 export interface Finances {
   bank: number;
   ledger: SeasonLedger;
+  /** after a board bailout: signings are frozen until the weekly wage bill is back under control */
+  restructuring?: boolean;
 }
 
 export type BoardGoalKind = 'TITLE' | 'PROMOTION' | 'PLAYOFF' | 'TOP_HALF' | 'SURVIVAL' | 'EUROPE';

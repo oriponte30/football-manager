@@ -44,7 +44,7 @@ export default function PlayerDossierModal({ playerId, onClose }: { playerId: st
               <div>
                 <div className="text-2xl font-bold leading-7">{fullName(p)}</div>
                 <div className="text-sm flex items-center gap-2 mt-1">
-                  <PosTag pos={p.position} />{p.listed && <span className="text-[11px] bg-red-700 text-white px-1 rounded">{p.listed.kind === 'TRANSFER' ? 'FOR SALE' : 'LOAN LIST'}</span>} Age {p.age} · <NationTag code={p.nationality} full /> · {pc ? pc.name : prospect ? 'Academy prospect' : 'Free agent'}
+                  <PosTag pos={p.position} />{p.secondaryPosition && (p.clubId === g.manager.clubId || g.scoutReports[p.id]) && <><span className="opacity-60">/</span><PosTag pos={p.secondaryPosition} /></>}{p.listed && <span className="text-[11px] bg-red-700 text-white px-1 rounded">{p.listed.kind === 'TRANSFER' ? 'FOR SALE' : 'LOAN LIST'}</span>} Age {p.age} · <NationTag code={p.nationality} full /> · {pc ? pc.name : prospect ? 'Academy prospect' : 'Free agent'}
                   {p.loanFromClubId && <span className="text-xs bg-blue-700 text-white px-1 rounded">ON LOAN from {g.clubs[p.loanFromClubId]?.name}</span>}
                 </div>
                 <div className="text-sm mt-1"><span className="opacity-60">Profile:</span> <span className="handwritten text-base">{p.playstyle}</span> <span className="opacity-60">· natural role</span> {p.preferredRole}</div>

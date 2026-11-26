@@ -80,6 +80,8 @@ export interface Player {
   preferredRole: PlayerRole;
   age: number;
   position: Position;
+  /** a second position he can cover at a small penalty (null for keepers and old saves) */
+  secondaryPosition?: Position | null;
   stats: PlayerStats;
   /** current ability / OVR (position weighted) */
   ca: number;

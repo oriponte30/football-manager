@@ -7,7 +7,8 @@ import { nationOf } from '../data/nationalities';
 import { PLAYSTYLES, type Playstyle } from '../data/playstyles';
 import { COUNTRIES } from '../data/countries';
 import { ovrFor, POSITION_WEIGHTS } from './ratings';
-import { clamp, type Rng } from './rng';
+import { clamp, hash01, type Rng } from './rng';
+import { SECONDARY_OPTIONS } from '../data/formations';
 import { nextId } from './ids';
 
 export const TRAITS: Trait[] = [
@@ -174,7 +175,30 @@ export function generatePlayer(g: GameState, rng: Rng, o: GenPlayerOpts): Player
     fanFavorite: false,
     recentRatings: [],
   };
+  p.secondaryPosition = pickSecondary(p.position, p.stats, hash01(p.paSeed, 'secondary')); // hash, not rng: leaves every random stream untouched
   return p;
+}
+
+/** A logical second position, leaning towards the one his attributes suit best. u is a uniform 0..1 roll. */
+export function pickSecondary(position: Position, stats: PlayerStats, u: number): Position | null {
+  const opts = SECONDARY_OPTIONS[position];
+  if (opts.length === 0) return null;
+  const w = opts.map((o) => Math.pow(Math.max(1, ovrFor(stats, o)) / 100, 12));
+  const total = w.reduce((a, b) => a + b, 0);
+  let t = u * total;
+  for (let i = 0; i < opts.length; i++) { t -= w[i]; if (t <= 0) return opts[i]; }
+  return opts[opts.length - 1];
+}
+
+/** Old saves: give every outfield player who has none a secondary position (deterministic per player). */
+export function backfillSecondaries(g: GameState): boolean {
+  let changed = false;
+  for (const p of Object.values(g.players)) {
+    if (p.secondaryPosition !== undefined) continue;
+    p.secondaryPosition = pickSecondary(p.position, p.stats, hash01(p.paSeed, 'secondary'));
+    changed = true;
+  }
+  return changed;
 }
 
 export function emptySeasonStats() {

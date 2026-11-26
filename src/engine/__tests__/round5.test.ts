@@ -14,6 +14,9 @@ import { applyInjury, tickRecoveryWithAlert } from '../injuryEngine';
 import { valuePlayer } from '../transferEngine';
 import { wageFor } from '../playerGenerator';
 import type { Player } from '../../types/player';
+import { seasonInjection, BAILOUT_FLOOR, TIER_BILL_AVG, restructureBlock } from '../financeEngine';
+import { positionFit, fitTier, SECONDARY_OPTIONS } from '../../data/formations';
+import { backfillSecondaries } from '../playerGenerator';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -224,5 +227,57 @@ describe('1990s valuation', () => {
     expect(wageFor(70, 2, 'ENG', 'CM')).toBeLessThan(8_000);
     expect(wageFor(80, 1, 'ENG', 'CM')).toBeLessThan(25_000);
     expect(wageFor(88, 1, 'ENG', 'CM')).toBeGreaterThan(30_000);
+  });
+});
+
+describe('season injection and bailout', () => {
+  it('injection stays inside the tier ranges and rewards finishing high', () => {
+    for (const [tier, lo, hi] of [[1, 3e6, 8e6], [2, 8e5, 2e6], [3, 2e5, 4.5e5]] as const) {
+      const top = seasonInjection(tier, 1, 16); const bottom = seasonInjection(tier, 16, 16);
+      expect(top.prize + top.rights).toBeGreaterThanOrEqual(hi * 0.99); expect(top.prize + top.rights).toBeLessThanOrEqual(hi * 1.01);
+      expect(bottom.prize + bottom.rights).toBeGreaterThanOrEqual(lo * 0.99); expect(bottom.prize + bottom.rights).toBeLessThanOrEqual(lo * 1.01);
+    }
+  });
+  it('a club still in the red at rollover is bailed out, with a confidence hit and a signing freeze', () => {
+    const g = career(581);
+    const club = g.clubs[g.manager.clubId!];
+    club.board.value = 100; club.board.patience = 0.05;
+    for (let w = 0; w < SEASON_WEEKS + 3; w++) advanceMatchweek(g);
+    if (g.status === 'SACKED') return;
+    club.finances.bank = -5_000_000; // a debt even the season's income can't clear
+    const before = club.board.value;
+    startNextSeason(g);
+    expect(club.finances.bank).toBe(BAILOUT_FLOOR[club.tier]);
+    expect(before - club.board.value).toBeGreaterThanOrEqual(14);
+    expect(club.finances.restructuring).toBe(true);
+    // frozen while the bill is above 105% of the tier average
+    for (const id of club.playerIds) g.players[id].contract.wage = Math.round(TIER_BILL_AVG[club.tier] * 2 / club.playerIds.length);
+    expect(restructureBlock(g, club)).toMatch(/frozen/);
+    for (const id of club.playerIds) g.players[id].contract.wage = 10;
+    expect(restructureBlock(g, club)).toBeNull();
+  });
+});
+
+describe('secondary positions', () => {
+  it('tiered out-of-position scale', () => {
+    expect(positionFit('CM', 'CM')).toBe(1);
+    expect(positionFit('CAM', 'ST', 'ST')).toBeGreaterThanOrEqual(0.96);
+    expect(positionFit('CAM', 'ST', 'ST')).toBeLessThanOrEqual(0.97);
+    expect(positionFit('CM', 'CDM')).toBeGreaterThanOrEqual(0.88); expect(positionFit('CM', 'CDM')).toBeLessThanOrEqual(0.90);
+    expect(positionFit('ST', 'CB')).toBeGreaterThanOrEqual(0.7); expect(positionFit('ST', 'CB')).toBeLessThanOrEqual(0.75);
+    expect(positionFit('CB', 'GK')).toBe(0.45); expect(positionFit('GK', 'CB')).toBe(0.45);
+    expect(fitTier('LW', 'ST', 'ST')).toBe(1); expect(fitTier('LW', 'RW')).toBe(2); expect(fitTier('ST', 'CB')).toBe(3);
+  });
+  it('every generated outfield player has a logical secondary; keepers have none; old saves are backfilled', () => {
+    const g = career(591);
+    const all = Object.values(g.players);
+    for (const p of all) {
+      if (p.position === 'GK') expect(p.secondaryPosition ?? null).toBeNull();
+      else expect(SECONDARY_OPTIONS[p.position]).toContain(p.secondaryPosition);
+    }
+    for (const p of all.slice(0, 50)) delete (p as { secondaryPosition?: unknown }).secondaryPosition;
+    expect(backfillSecondaries(g)).toBe(true);
+    for (const p of all.slice(0, 50)) expect(p.secondaryPosition === null || SECONDARY_OPTIONS[p.position].includes(p.secondaryPosition as never)).toBe(true);
+    expect(backfillSecondaries(g)).toBe(false);
   });
 });

@@ -6,7 +6,7 @@ import { FORMATIONS, positionFit, defaultRoles, ROLES_BY_POSITION } from '../dat
 import { ovrFor } from './ratings';
 
 export function slotScore(p: Player, slot: Position): number {
-  return ovrFor(p.stats, slot) * positionFit(p.position, slot) * (0.72 + 0.28 * (p.fitness / 100));
+  return ovrFor(p.stats, slot) * positionFit(p.position, slot, p.secondaryPosition) * (0.72 + 0.28 * (p.fitness / 100));
 }
 
 export function availablePlayers(g: GameState, club: Club): Player[] {
@@ -102,7 +102,7 @@ export function squadStrength(g: GameState, club: Club): number {
   lineup.forEach((id, i) => {
     if (!id) return;
     const p = g.players[id];
-    sum += ovrFor(p.stats, slots[i].pos) * positionFit(p.position, slots[i].pos);
+    sum += ovrFor(p.stats, slots[i].pos) * positionFit(p.position, slots[i].pos, p.secondaryPosition);
     n++;
   });
   return n === 0 ? 40 : (sum + (11 - n) * 30) / 11;

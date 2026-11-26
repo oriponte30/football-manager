@@ -5,7 +5,7 @@ import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, FitnessBar, MoraleIcon, FormDots, PosTag, Stars, staffStars, InjuryBadge, NationTag, paRead } from '../ui';
 import { PlayerFace } from '../Face';
 import CRTMonitor from '../layout/CRTMonitor';
-import { FORMATIONS, FORMATION_IDS, ROLES_BY_POSITION, positionFit } from '../../data/formations';
+import { FORMATIONS, FORMATION_IDS, ROLES_BY_POSITION, positionFit, fitTier } from '../../data/formations';
 import { INSTRUCTIONS, instructionsFor } from '../../data/instructions';
 import { ovrFor, playerName } from '../../engine/ratings';
 import { valuePlayer } from '../../engine/transferEngine';
@@ -81,13 +81,14 @@ export default function TacticsScreen() {
           {slots.map((slot, i) => {
             const pid = t.lineup[i];
             const p = pid ? g.players[pid] : null;
-            const fit = p ? positionFit(p.position, slot.pos) : 1;
+            const fit = p ? positionFit(p.position, slot.pos, p.secondaryPosition) : 1;
+            const tier = p ? fitTier(p.position, slot.pos, p.secondaryPosition) : 0;
             const role = t.roles[i];
             const instr = t.instructions?.[i];
             return (
               <div
                 key={i}
-                className={`magnet ${sel === i ? 'selected' : ''} ${p && fit < 1 ? 'oop' : ''} ${p && focus === p.id && sel !== i ? 'focused' : ''}`}
+                className={`magnet ${sel === i ? 'selected' : ''} ${p ? `fit-${tier}` : ''} ${p && focus === p.id && sel !== i ? 'focused' : ''}`}
                 style={{ left: `${slot.x}%`, bottom: `${slot.y}%`, background: p ? `radial-gradient(circle at 35% 30%, ${club.colors[0]}ee, ${club.colors[0]} 60%, #000a)` : 'radial-gradient(circle at 35% 30%, #888, #444)', color: club.colors[1] }}
                 onClick={() => onMagnetClick(i)}
                 draggable={!!p}
@@ -182,12 +183,12 @@ function SquadView({ focus, setFocus, sel, setSel, pickOutsider }: {
           {slots.map((slot, i) => {
             const pid = t.lineup[i];
             const p = pid ? g.players[pid] : null;
-            const fit = p ? positionFit(p.position, slot.pos) : 1;
+            const fit = p ? positionFit(p.position, slot.pos, p.secondaryPosition) : 1;
             return (
               <button key={i} onClick={() => { setSel(sel === i ? null : i); if (p) setFocus(p.id); }}
                 className={`xi-row ${sel === i ? 'on' : ''} ${p && focus === p.id ? 'focus' : ''}`}>
                 <span className="w-9 text-left"><PosTag pos={slot.pos} /></span>
-                <span className="flex-1 truncate text-left">{p ? playerName(p) : <i className="opacity-60">empty</i>}{p && fit < 1 && <span className="text-red-700 text-xs"> ({p.position})</span>}</span>
+                <span className="flex-1 truncate text-left">{p ? playerName(p) : <i className="opacity-60">empty</i>}{p && fit < 1 && <span className={`text-xs ${fit >= 0.96 ? 'text-lime-700' : fit >= 0.85 ? 'text-amber-700' : 'text-red-700'}`}> ({p.position}{p.secondaryPosition === slot.pos ? ' · 2nd' : ''})</span>}</span>
                 {p && <><span className="font-bold w-7 text-right">{Math.round(ovrFor(p.stats, slot.pos) * fit)}</span><FitnessBar value={p.fitness} player={p} /></>}
               </button>
             );
@@ -240,8 +241,8 @@ function bestSlotFor(g: ReturnType<typeof useGame>, club: ReturnType<typeof useU
   let best = 0, bestScore = -1;
   slots.forEach((slot, i) => {
     const occ = club.tactics.lineup[i] ? g.players[club.tactics.lineup[i] as string] : null;
-    const fit = positionFit(p.position, slot.pos);
-    const score = fit * 100 - (occ ? ovrFor(occ.stats, slot.pos) * positionFit(occ.position, slot.pos) : 0) * 0.2;
+    const fit = positionFit(p.position, slot.pos, p.secondaryPosition);
+    const score = fit * 100 - (occ ? ovrFor(occ.stats, slot.pos) * positionFit(occ.position, slot.pos, occ.secondaryPosition) : 0) * 0.2;
     if (score > bestScore) { bestScore = score; best = i; }
   });
   return best;
@@ -326,7 +327,7 @@ function PlayerCard({ p, onClose, onPickSlot }: { p: Player; onClose: () => void
         )}
         {inXI && <button className="btn btn-sm" onClick={() => onPickSlot(xiIdx)}>ROLE & INSTRUCTION</button>}
         <button className="btn btn-sm" onClick={() => s.openDossier(p.id)}>DOSSIER</button>
-        {positionFit(p.position, inXI ? slots[xiIdx].pos : slots[cmpSlot]?.pos ?? p.position) < 1 && <span className="text-red-700 text-xs">out of position</span>}
+        {positionFit(p.position, inXI ? slots[xiIdx].pos : slots[cmpSlot]?.pos ?? p.position, p.secondaryPosition) < 1 && <span className="text-red-700 text-xs">out of position</span>}
       </div>
     </div>
   );
@@ -373,7 +374,7 @@ function RosterView({ onPick }: { onPick: (p: Player) => void }) {
             return (
               <button key={p.id} onClick={() => onPick(p)} className={`${cols} w-full items-center px-1 py-[2px] gap-x-1 border-b border-black/10 text-sm text-left hover:bg-yellow-100/60`}>
                 <PlayerFace p={p} size={26} shirt={club.colors[0]} />
-                <PosTag pos={p.position} />
+                <span className="flex items-center gap-[2px]"><PosTag pos={p.position} />{p.secondaryPosition && <span className="text-[9px] opacity-60">/{p.secondaryPosition}</span>}</span>
                 <span className="truncate">{playerName(p)}{t.trainingTags.includes(p.id) ? ' ◆' : ''}{p.listed ? <span className="ml-1 text-[10px] bg-red-700 text-white px-1 rounded">{p.listed.kind === 'TRANSFER' ? 'SALE' : 'LOAN'}</span> : null}</span>
                 <span>{p.age}</span>
                 <NationTag code={p.nationality} />

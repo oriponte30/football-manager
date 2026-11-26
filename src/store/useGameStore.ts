@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { backfillSecondaries } from '../engine/playerGenerator';
 import { syncBench } from '../engine/lineup';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import type { CountryCode, GameState } from '../types/world';
@@ -418,7 +419,7 @@ export const useGameStore = create<GameStore>()(
             warmUpEngine(state.game as GameState);
             // saves made before the free-agent quotas existed get their pool restocked on opening
             const cur = useGameStore.getState().game;
-            if (cur && needsCoverage(cur)) { const g = structuredClone(cur); topUpFreeAgents(g); useGameStore.setState({ game: g }); }
+            if (cur && (needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const g = structuredClone(cur); topUpFreeAgents(g); backfillSecondaries(g); useGameStore.setState({ game: g }); }
           }, 0);
         }
       },

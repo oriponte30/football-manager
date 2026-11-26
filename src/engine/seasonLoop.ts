@@ -20,7 +20,7 @@ import { refreshShortlist } from './shortlistEngine';
 import { applyResultToTable, emptyRow, resolveShadowLeague, sortedTable } from './shadowLeagueEngine';
 import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression } from './progressionEngine';
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
-import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, TV_WEEKLY_SHARE, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
+import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, TV_WEEKLY_SHARE, seasonInjection, BAILOUT_FLOOR, TIER_BILL_AVG, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
 import {
   aiIncomingBids, aiWorldTransfers, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
 } from './transferEngine';
@@ -559,6 +559,10 @@ export function advanceMatchweek(g: GameState): void {
   if (userId) {
     const userClub = g.clubs[userId];
     if (!pre) weeklyBoard(g, userClub);
+    if (userClub.finances.restructuring && weeklyBill(g, userClub) <= TIER_BILL_AVG[userClub.tier] * 1.05) {
+      userClub.finances.restructuring = false;
+      fax(g, { kind: 'NEWS', from: 'The Board', title: 'FREEZE LIFTED', body: 'The wage bill is back under control. The board has lifted the transfer freeze.', resolved: true });
+    }
     // the finance director speaks up when cash gets thin (a warning, not a block)
     const bill = weeklyBill(g, userClub);
     const runway = bill > 0 ? userClub.finances.bank / bill : 99;
@@ -701,6 +705,12 @@ export function finalizeSeason(g: GameState, rng: Rng): void {
       const tv = tvMoney(c, i + 1);
       credit(c, c.isShadow ? tv : Math.round(tv * (1 - TV_WEEKLY_SHARE)), 'tv'); // merit payment on final position; the rest came weekly
       if (c.isShadow) c.finances.bank -= Math.round(tv * 0.85);
+      else {
+        const inj = seasonInjection(c.tier, i + 1, lg.clubIds.length);
+        credit(c, inj.prize, 'prize');
+        credit(c, inj.rights, 'tv');
+        if (c.id !== g.manager.clubId) c.finances.bank = Math.min(c.finances.bank, seasonInjection(c.tier, 1, 16).prize * 5 + seasonInjection(c.tier, 1, 16).rights * 2); // owners take the surplus from AI clubs
+      }
       if (c.id === g.manager.clubId) userTV = tv;
     });
   }
@@ -949,6 +959,20 @@ export function startNextSeason(g: GameState): void {
       kind: 'BOARD', from: `${club.name} Board`, title: `SEASON ${g.season.year}/${(g.season.year + 1) % 100} OBJECTIVES`, resolved: true,
       body: `Welcome back. This season the board expects: ${club.board.goal.label}. Board confidence: ${Math.round(club.board.value)}%. Bank: ${fmtMoney(club.finances.bank)}. The summer window is open.`,
     });
+  }
+  // clubs still in the red after prize money and season-ticket income get a board bailout
+  for (const c of Object.values(g.clubs)) {
+    if (c.isShadow || c.finances.bank >= 0) continue;
+    const debt = -c.finances.bank;
+    c.finances.bank = BAILOUT_FLOOR[c.tier];
+    if (c.id !== userId) continue;
+    const hit = rng.int(15, 20);
+    c.board.value = clamp(c.board.value - hit, 0, 100);
+    c.finances.restructuring = true;
+    const cap = Math.round(TIER_BILL_AVG[c.tier] * 1.05);
+    const body = `The owners have cleared ${fmtMoney(debt)} of debt and reset the bank to ${fmtMoney(BAILOUT_FLOOR[c.tier])}. Board confidence falls ${hit} points. All signings are frozen until the weekly wage bill is under ${fmtMoney(cap)}.`;
+    fax(g, { kind: 'NEWS', from: 'The Board', title: 'DEBT RESTRUCTURING', body, resolved: true, urgent: true });
+    newsClub(g, c, `${c.name} bailed out by the owners`, `The owners have stepped in to clear ${fmtMoney(debt)} of debt at ${c.name}. A transfer freeze is in place until the wage bill is trimmed.`, 4);
   }
   g.seasonSummary = null;
   pruneNews(g);

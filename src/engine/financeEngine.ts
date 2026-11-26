@@ -6,8 +6,9 @@ import { COUNTRIES } from '../data/countries';
 import { clamp } from './rng';
 
 // 1990s scale: income is tuned so a club's gates and TV money only just cover its wage bill
-const TICKET: Record<Tier, number> = { 1: 11.5, 2: 5.3, 3: 3.5 };
-const TV_BASE: Record<Tier, number> = { 1: 2_600_000, 2: 450_000, 3: 110_000 };
+// in-season gates and TV instalments roughly cover an average wage bill; the rollover injection below is the summer budget
+const TICKET: Record<Tier, number> = { 1: 11.5, 2: 5.4, 3: 3.5 };
+const TV_BASE: Record<Tier, number> = { 1: 2_600_000, 2: 460_000, 3: 110_000 };
 const WAGE_BASELINE: Record<Tier, number> = { 1: 320_000, 2: 75_000, 3: 28_000 };
 
 export function attendance(home: Club, away: Club, isDerby: boolean, competition: CompetitionKind): number {
@@ -57,6 +58,28 @@ export function noBudget(g: GameState, club: Club, cost: number): string | null 
 export const TV_WEEKLY_SHARE = 0.7;
 export function weeklyTV(club: Club, position: number): number {
   return Math.round((tvMoney(club, position) * TV_WEEKLY_SHARE) / 30 / 100) * 100;
+}
+
+/** Season-rollover injection: league-position prize money plus season tickets and pre-season TV rights. */
+const INJECTION: Record<Tier, [number, number]> = { 1: [3_000_000, 8_000_000], 2: [800_000, 2_000_000], 3: [200_000, 450_000] };
+export function seasonInjection(tier: Tier, position: number, leagueSize: number): { prize: number; rights: number } {
+  const [lo, hi] = INJECTION[tier];
+  const t = Math.pow(Math.max(0, leagueSize - position) / Math.max(1, leagueSize - 1), 1.6);
+  const total = lo + (hi - lo) * t;
+  return { prize: Math.round((total * 0.4) / 1000) * 1000, rights: Math.round((total * 0.6) / 1000) * 1000 };
+}
+
+/** What a typical club of each tier pays out in wages and staff each week. */
+export const TIER_BILL_AVG: Record<Tier, number> = { 1: 340_000, 2: 57_000, 3: 20_000 };
+/** Cash balance a board bailout restores. */
+export const BAILOUT_FLOOR: Record<Tier, number> = { 1: 750_000, 2: 250_000, 3: 100_000 };
+const RESTRUCTURE_LIMIT = 1.05; // weekly bill must be back within 105% of the tier average
+
+/** After a bailout, signings stay frozen until the wage bill is under control. */
+export function restructureBlock(g: GameState, club: Club): string | null {
+  if (!club.finances.restructuring) return null;
+  if (weeklyBill(g, club) <= TIER_BILL_AVG[club.tier] * RESTRUCTURE_LIMIT) return null;
+  return `BOARD RESTRUCTURING: signings are frozen until your weekly wage bill is under ${fmtMoney(Math.round(TIER_BILL_AVG[club.tier] * RESTRUCTURE_LIMIT))} (it is ${fmtMoney(weeklyBill(g, club))}).`;
 }
 
 export function payWeeklyWages(g: GameState, club: Club): void {

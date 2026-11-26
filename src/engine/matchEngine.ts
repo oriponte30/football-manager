@@ -142,7 +142,7 @@ function newPlayerStats(p: Player, clubId: string, started: boolean): PlayerMatc
 }
 
 function staticMult(p: Player, slot: Position, sheet: TeamSheet, isHome: boolean, ctx: MatchContext, sub: boolean): number {
-  let m = positionFit(p.position, slot);
+  let m = positionFit(p.position, slot, p.secondaryPosition);
   m *= 0.93 + 0.07 * (sheet.familiarity / 100);
   m *= 1 + (moraleLevel(p.moraleValue) - 2) * 0.025 + ((sheet.atmosphere - 50) / 50) * 0.015;
   if (isHome && !ctx.neutralVenue) m *= 1 + 0.03 * sheet.homeBoost * (0.7 + 0.6 * (sheet.fanInterest / 100));
@@ -614,7 +614,7 @@ function bestSubFor(bench: Player[], slot: Position, chasing = false): number {
     const p = bench[i];
     if (p.injuryWeeks > 0) continue;
     if ((slot === 'GK') !== (p.position === 'GK')) continue;
-    let s = p.ca * positionFit(p.position, slot) * (0.7 + 0.3 * p.fitness / 100);
+    let s = p.ca * positionFit(p.position, slot, p.secondaryPosition) * (0.7 + 0.3 * p.fitness / 100);
     if (chasing && p.traits.includes('Super-Sub')) s *= 1.12;
     s *= 1 - i * 0.004; // respect the manager's bench order on ties
     if (s > score) { score = s; best = i; }

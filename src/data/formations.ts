@@ -90,12 +90,27 @@ const NEIGHBOURS: Record<Position, Position[]> = {
   ST: ['CAM', 'LW', 'RW'],
 };
 
-export function positionFit(natural: Position, slot: Position): number {
+/** Effective-rating multiplier for playing a slot: natural 1.00, secondary 0.965, adjacent 0.89, unrelated 0.72, keeper swap 0.45. */
+export function positionFit(natural: Position, slot: Position, secondary?: Position | null): number {
   if (natural === slot) return 1;
-  if (natural === 'GK' || slot === 'GK') return 0.35;
-  if (NEIGHBOURS[natural].includes(slot)) return 0.9;
+  if (natural === 'GK' || slot === 'GK') return 0.45;
+  if (secondary && secondary === slot) return 0.965;
+  if (NEIGHBOURS[natural].includes(slot)) return 0.89;
   return 0.72;
 }
+
+/** Tier of fit, for colour coding: 0 natural, 1 secondary, 2 adjacent, 3 unrelated/keeper swap. */
+export function fitTier(natural: Position, slot: Position, secondary?: Position | null): 0 | 1 | 2 | 3 {
+  if (natural === slot) return 0;
+  if (natural === 'GK' || slot === 'GK') return 3;
+  if (secondary && secondary === slot) return 1;
+  return NEIGHBOURS[natural].includes(slot) ? 2 : 3;
+}
+
+export const SECONDARY_OPTIONS: Record<Position, Position[]> = {
+  GK: [], CB: ['CDM', 'LB', 'RB'], LB: ['RB', 'CB', 'LW'], RB: ['LB', 'CB', 'RW'], CDM: ['CM', 'CB'], CM: ['CDM', 'CAM'],
+  CAM: ['CM', 'LW', 'RW', 'ST'], LW: ['RW', 'ST', 'CAM'], RW: ['LW', 'ST', 'CAM'], ST: ['LW', 'RW', 'CAM'],
+};
 
 export const POSITION_GROUP: Record<Position, 'GK' | 'DEF' | 'MID' | 'ATT'> = {
   GK: 'GK', CB: 'DEF', LB: 'DEF', RB: 'DEF', CDM: 'MID', CM: 'MID', CAM: 'MID', LW: 'ATT', RW: 'ATT', ST: 'ATT',
