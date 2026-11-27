@@ -13,6 +13,7 @@ import { useGameStore } from '../store/useGameStore';
 import { SAVE_VERSION } from '../engine/worldGenerator';
 import { warmUpEngine } from '../engine/seasonLoop';
 import { topUpFreeAgents, needsCoverage } from '../engine/freeAgentPool';
+import { fitSaveToWageBudget } from '../engine/financeEngine';
 import { backfillSecondaries } from '../engine/playerGenerator';
 import type { GameState } from '../types/world';
 import { encode, summarize, hasCareer, type SaveSummary } from './pack';
@@ -123,7 +124,7 @@ function loadIntoGame(g: GameState): void {
   setTimeout(() => {
     warmUpEngine(g);
     const cur = useGameStore.getState().game;
-    if (cur && (needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const c = structuredClone(cur); topUpFreeAgents(c); backfillSecondaries(c); useGameStore.setState({ game: c }); }
+    if (cur && (!cur.wageFitV2 || needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const c = structuredClone(cur); topUpFreeAgents(c); backfillSecondaries(c); fitSaveToWageBudget(c); useGameStore.setState({ game: c }); }
   }, 0);
 }
 

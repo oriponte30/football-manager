@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { fitSaveToWageBudget } from '../engine/financeEngine';
 import { backfillSecondaries } from '../engine/playerGenerator';
 import { syncBench } from '../engine/lineup';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
@@ -419,7 +420,7 @@ export const useGameStore = create<GameStore>()(
             warmUpEngine(state.game as GameState);
             // saves made before the free-agent quotas existed get their pool restocked on opening
             const cur = useGameStore.getState().game;
-            if (cur && (needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const g = structuredClone(cur); topUpFreeAgents(g); backfillSecondaries(g); useGameStore.setState({ game: g }); }
+            if (cur && (!cur.wageFitV2 || needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const g = structuredClone(cur); topUpFreeAgents(g); backfillSecondaries(g); fitSaveToWageBudget(g); useGameStore.setState({ game: g }); }
           }, 0);
         }
       },

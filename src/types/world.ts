@@ -202,6 +202,7 @@ export interface GameState {
   pressHistory?: string[];
   lastUserResults: MatchResult[];
   /** user club season totals (all competitions), for the Team Stats view */
+  wageFitV2?: boolean;
   teamStats?: TeamSeasonStats;
   /** pending medical alerts for the manager: someone important is hurt, or back and forgotten */
   medicalAlerts?: MedicalAlert[];

@@ -14,7 +14,7 @@ import { applyInjury, tickRecoveryWithAlert } from '../injuryEngine';
 import { valuePlayer } from '../transferEngine';
 import { wageFor } from '../playerGenerator';
 import type { Player } from '../../types/player';
-import { seasonInjection, BAILOUT_FLOOR, TIER_BILL_AVG, restructureBlock } from '../financeEngine';
+import { seasonInjection, BAILOUT_FLOOR, fitSaveToWageBudget } from '../financeEngine';
 import { positionFit, fitTier, SECONDARY_OPTIONS } from '../../data/formations';
 import { backfillSecondaries } from '../playerGenerator';
 import { wageBudget } from '../financeEngine';
@@ -233,13 +233,13 @@ describe('1990s valuation', () => {
 
 describe('season injection and bailout', () => {
   it('injection stays inside the tier ranges and rewards finishing high', () => {
-    for (const [tier, lo, hi] of [[1, 3e6, 8e6], [2, 8e5, 2e6], [3, 2e5, 4.5e5]] as const) {
+    for (const [tier, lo, hi] of [[1, 4e6, 11e6], [2, 11e5, 28e5], [3, 28e4, 63e4]] as const) {
       const top = seasonInjection(tier, 1, 16); const bottom = seasonInjection(tier, 16, 16);
       expect(top.prize + top.rights).toBeGreaterThanOrEqual(hi * 0.99); expect(top.prize + top.rights).toBeLessThanOrEqual(hi * 1.01);
       expect(bottom.prize + bottom.rights).toBeGreaterThanOrEqual(lo * 0.99); expect(bottom.prize + bottom.rights).toBeLessThanOrEqual(lo * 1.01);
     }
   });
-  it('a club still in the red at rollover is bailed out, with a confidence hit and a signing freeze', () => {
+  it('a club still in the red at rollover is bailed out, with a confidence hit but no signing freeze', () => {
     const g = career(581);
     const club = g.clubs[g.manager.clubId!];
     club.board.value = 100; club.board.patience = 0.05;
@@ -250,12 +250,7 @@ describe('season injection and bailout', () => {
     startNextSeason(g);
     expect(club.finances.bank).toBe(BAILOUT_FLOOR[club.tier]);
     expect(before - club.board.value).toBeGreaterThanOrEqual(14);
-    expect(club.finances.restructuring).toBe(true);
-    // frozen while the bill is above 105% of the tier average
-    for (const id of club.playerIds) g.players[id].contract.wage = Math.round(TIER_BILL_AVG[club.tier] * 2 / club.playerIds.length);
-    expect(restructureBlock(g, club)).toMatch(/frozen/);
-    for (const id of club.playerIds) g.players[id].contract.wage = 10;
-    expect(restructureBlock(g, club)).toBeNull();
+    expect(club.finances.restructuring).toBeFalsy();
   });
 });
 
@@ -284,6 +279,19 @@ describe('secondary positions', () => {
 });
 
 describe('wage structure and swaps', () => {
+  it('an old save is fitted to its wage budget once, wages only go down, the freeze is lifted', () => {
+    const g = career(604);
+    const club = g.clubs[g.manager.clubId!];
+    for (const id of club.playerIds) g.players[id].contract.wage *= 6;
+    club.finances.restructuring = true; club.finances.bank = 50_000;
+    const before = weeklyBill(g, club);
+    expect(fitSaveToWageBudget(g)).toBe(true);
+    expect(weeklyBill(g, club)).toBeLessThan(before);
+    expect(weeklyBill(g, club)).toBeLessThanOrEqual(wageBudget(club) * 1.02 + 200);
+    expect(club.finances.restructuring).toBe(false);
+    expect(club.finances.bank).toBeGreaterThanOrEqual(BAILOUT_FLOOR[club.tier]);
+    expect(fitSaveToWageBudget(g)).toBe(false);
+  });
   it('no club starts with a wage bill its income cannot carry', () => {
     for (const seed of [601, 602]) {
       const g = generateWorld('T', 'ENG', seed);

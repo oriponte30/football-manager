@@ -14,7 +14,7 @@ import { clamp, hash01, type Rng } from './rng';
 import { fullName, moraleLevel } from './ratings';
 import { nextId } from './ids';
 import { wageFor } from './playerGenerator';
-import { canAffordWage, credit, fmtMoney, restructureBlock } from './financeEngine';
+import { canAffordWage, credit, fmtMoney } from './financeEngine';
 import { newsTransfer } from './newsEngine';
 import { generateScoutReport, unscoutedOvrRange } from './scoutingEngine';
 
@@ -157,7 +157,6 @@ export function submitBid(g: GameState, buyerId: string, input: BidInput): { ok:
   if (p.clubId === buyerId) return { ok: false, message: 'He already plays for you.' };
   const pureSwap = input.type === 'TRANSFER' && input.fee <= 0 && !!input.includePlayerId; // a straight swap costs nothing, so debt doesn't matter
   if (!pureSwap && buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: the bank has frozen all new signings.' };
-  if (!pureSwap) { const rb = restructureBlock(g, buyer); if (rb) return { ok: false, message: rb }; }
   if (!p.clubId) return { ok: false, message: 'Free agent: offer a contract directly.' };
   if (!windowOpen(g)) return { ok: false, message: 'The transfer window is closed.' };
   if (p.loanFromClubId) return { ok: false, message: 'He is on loan there and cannot be sold.' };
@@ -323,7 +322,6 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
   if (bid.status !== 'ACCEPTED') return { ok: false, message: 'This deal is no longer available.' };
   const pureSwap = bid.type === 'TRANSFER' && bid.fee <= 0 && !!bid.includePlayerId;
   if (!pureSwap && buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: signings are frozen.' };
-  if (!pureSwap) { const rb = restructureBlock(g, buyer); if (rb) return { ok: false, message: rb }; }
   if (bid.type === 'TRANSFER' && buyer.finances.bank < bid.fee) return { ok: false, message: 'Not enough funds for the fee.' };
 
   if (bid.type === 'LOAN') {
@@ -420,7 +418,6 @@ export function signFreeAgent(g: GameState, clubId: string, playerId: string, wa
   const club = g.clubs[clubId];
   if (!p || p.clubId) return { ok: false, message: 'Not a free agent.' };
   if (club.finances.bank < 0) return { ok: false, message: 'IN THE RED: signings are frozen.' };
-  { const rb = restructureBlock(g, club); if (rb) return { ok: false, message: rb }; }
   if (club.playerIds.length >= 32) return { ok: false, message: 'Squad is full (32).' };
   const will = freeAgentDecision(g, p, club, wage, years);
   if (!will.ok) {

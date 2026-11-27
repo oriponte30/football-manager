@@ -157,7 +157,7 @@ function createClub(g: GameState, rng: Rng, spec: ClubSpec, colorIdx: number): C
   const capacity = arch ? arch.capacity : Math.round((tier === 1 ? rng.range(28000, 78000) - rank * 1500 : tier === 2 ? rng.range(12000, 30000) : rng.range(4000, 14000)) / 100) * 100;
   const facLvl = tier === 1 ? 4 : tier === 2 ? 3 : 2;
   // 1990s summer budgets: Tier 3 $150-450K, Tier 2 $0.8-2.5M, Tier 1 $3-10M, the three giants $12-18M
-  const bank = arch ? arch.bank : Math.round((tier === 1 ? (rank < 3 ? rng.range(12e6, 18e6) : Math.max(3e6, rng.range(5e6, 10e6) - (rank - 3) * 2e5)) : tier === 2 ? rng.range(0.8e6, 2.5e6) : rng.range(1.5e5, 4.5e5)) / 1000) * 1000;
+  const bank = arch ? arch.bank : Math.round((tier === 1 ? (rank < 3 ? rng.range(12e6, 18e6) : Math.max(3e6, rng.range(5e6, 10e6) - (rank - 3) * 2e5)) : tier === 2 ? rng.range(1.3e6, 3.5e6) : rng.range(2.5e5, 7e5)) / 1000) * 1000;
   const identity = rollIdentity(rng, spec.country);
   const formation: FormationId = rng.chance(0.8) ? rng.pick(identity.formations) : rng.pick(FORMATION_IDS);
   // squad profile: some clubs are deep, some top-heavy; some young, some veteran

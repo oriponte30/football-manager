@@ -61,7 +61,7 @@ export function weeklyTV(club: Club, position: number): number {
 }
 
 /** Season-rollover injection: league-position prize money plus season tickets and pre-season TV rights. */
-const INJECTION: Record<Tier, [number, number]> = { 1: [3_000_000, 8_000_000], 2: [800_000, 2_000_000], 3: [200_000, 450_000] };
+const INJECTION: Record<Tier, [number, number]> = { 1: [4_000_000, 11_000_000], 2: [1_100_000, 2_800_000], 3: [280_000, 630_000] };
 export function seasonInjection(tier: Tier, position: number, leagueSize: number): { prize: number; rights: number } {
   const [lo, hi] = INJECTION[tier];
   const t = Math.pow(Math.max(0, leagueSize - position) / Math.max(1, leagueSize - 1), 1.6);
@@ -72,8 +72,7 @@ export function seasonInjection(tier: Tier, position: number, leagueSize: number
 /** What a typical club of each tier pays out in wages and staff each week. */
 export const TIER_BILL_AVG: Record<Tier, number> = { 1: 340_000, 2: 57_000, 3: 20_000 };
 /** Cash balance a board bailout restores. */
-export const BAILOUT_FLOOR: Record<Tier, number> = { 1: 750_000, 2: 250_000, 3: 100_000 };
-const RESTRUCTURE_LIMIT = 1.05; // weekly bill must be back within 105% of the tier average
+export const BAILOUT_FLOOR: Record<Tier, number> = { 1: 3_000_000, 2: 900_000, 3: 250_000 };
 
 /**
  * What a club can expect to earn per week in a normal league season: home gates (half the weeks)
@@ -85,7 +84,9 @@ export function expectedWeeklyIncome(club: Club): number {
 }
 /** The weekly wage bill (players + staff) the club's income can carry. */
 export function wageBudget(club: Club): number {
-  return Math.round(expectedWeeklyIncome(club) * 0.95);
+  // normal weekly income, plus half of a mid-table summer injection spread over the season: wages can use it, the rest stays as transfer money
+  const inj = seasonInjection(club.tier, 8, 16);
+  return Math.round(expectedWeeklyIncome(club) * 0.95 + ((inj.prize + inj.rights) * 0.5) / 30);
 }
 
 /** Set a club's player contracts so its weekly bill fits the wage budget (AI clubs and new worlds; never the user's). */
@@ -100,11 +101,22 @@ export function trimToWageBudget(g: GameState, club: Club): void {
   }
 }
 
-/** After a bailout, signings stay frozen until the wage bill is under control. */
-export function restructureBlock(g: GameState, club: Club): string | null {
-  if (!club.finances.restructuring) return null;
-  if (weeklyBill(g, club) <= TIER_BILL_AVG[club.tier] * RESTRUCTURE_LIMIT) return null;
-  return `BOARD RESTRUCTURING: signings are frozen until your weekly wage bill is under ${fmtMoney(Math.round(TIER_BILL_AVG[club.tier] * RESTRUCTURE_LIMIT))} (it is ${fmtMoney(weeklyBill(g, club))}).`;
+/**
+ * One-time fix for saves made before wage budgets existed: bring every club's bill inside its budget
+ * (the user's wages only ever go down), lift any old transfer freeze, and top the bank up to the bailout floor.
+ */
+export function fitSaveToWageBudget(g: GameState): boolean {
+  if (g.wageFitV2) return false;
+  for (const c of Object.values(g.clubs)) {
+    if (c.isShadow) continue;
+    trimToWageBudget(g, c);
+    if (c.id === g.manager.clubId) {
+      c.finances.restructuring = false;
+      if (c.finances.bank < BAILOUT_FLOOR[c.tier]) c.finances.bank = BAILOUT_FLOOR[c.tier];
+    }
+  }
+  g.wageFitV2 = true;
+  return true;
 }
 
 export function payWeeklyWages(g: GameState, club: Club): void {

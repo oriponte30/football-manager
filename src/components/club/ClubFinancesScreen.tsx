@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, Stars } from '../ui';
 import CRTMonitor from '../layout/CRTMonitor';
-import { fmtMoney, weeklyWageBill, weeklyBill, wageBudget, spendable, RESERVE_WEEKS, TIER_BILL_AVG, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
+import { fmtMoney, weeklyWageBill, weeklyBill, wageBudget, spendable, RESERVE_WEEKS, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
 import { STAFF_ROLES, STAFF_ROLE_LABELS, type StaffRole } from '../../types/staff';
 import { starsFromInternal } from '../../engine/ratings';
 import { staffCeiling, staffInterest } from '../../engine/staffGenerator';
@@ -37,7 +37,6 @@ export default function ClubFinancesScreen() {
         <CRTMonitor title="CLUB ACCOUNTS" page="500">
           <div className={`text-4xl ${club.finances.bank < 0 ? 't-red blink' : 't-green'}`}>{fmtMoney(club.finances.bank)}</div>
           {club.finances.bank < 0 && <div className="t-red">IN THE RED — new signings blocked, board confidence falling every week.</div>}
-          {club.finances.restructuring && <div className="t-red">BOARD RESTRUCTURING — signings frozen until the weekly wage bill is under {fmtMoney(Math.round(TIER_BILL_AVG[club.tier] * 1.05))}.</div>}
           <div className="grid grid-cols-2 gap-x-6 mt-2">
             <div className="t-white">WEEKLY WAGE BILL</div><div>{fmtMoney(wages.players + wages.staff)} <span className="t-dim">(players {fmtMoney(wages.players)}, staff {fmtMoney(wages.staff)})</span></div>
             <div className="t-white">WAGE BUDGET</div><div className={wages.players + wages.staff > wageBudget(club) ? 't-red' : 't-green'}>{fmtMoney(wageBudget(club))}/wk <span className="t-dim">(what your gates and TV money can carry. Bill is {Math.round(((wages.players + wages.staff) / Math.max(1, wageBudget(club))) * 100)}% of it)</span></div>
