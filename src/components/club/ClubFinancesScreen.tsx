@@ -56,7 +56,7 @@ export default function ClubFinancesScreen() {
             <Line k="Facilities" v={-L.facilities} />
           </div>
           <div className="mt-1 t-white">NET: <span className={income - spend >= 0 ? 't-green' : 't-red'}>{fmtMoney(income - spend)}</span></div>
-          <div className="t-dim text-base mt-1">TV money comes in weekly (70%, by your current league position) with a merit payment at season end (30%, by final position), scaled by tier and fan interest ({COUNTRIES[club.country].name}: ×{COUNTRIES[club.country].tvMoneyMult}).</div>
+          <div className="t-dim text-base mt-1">Sponsorship (about 30% of your wage bill, scaled by your squad's quality) is paid every week all year. TV money comes in weekly (70%, by your current league position) with a merit payment at season end (30%, by final position), scaled by tier and fan interest ({COUNTRIES[club.country].name}: ×{COUNTRIES[club.country].tvMoneyMult}).</div>
         </CRTMonitor>
 
         <div className="paper p-4">

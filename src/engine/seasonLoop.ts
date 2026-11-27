@@ -20,7 +20,7 @@ import { refreshShortlist } from './shortlistEngine';
 import { applyResultToTable, emptyRow, resolveShadowLeague, sortedTable } from './shadowLeagueEngine';
 import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression } from './progressionEngine';
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
-import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, trimToWageBudget, wageBudget, TV_WEEKLY_SHARE, seasonInjection, summerFunding, BAILOUT_FLOOR, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
+import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, trimToWageBudget, wageBudget, weeklySponsorship, TV_WEEKLY_SHARE, seasonInjection, summerFunding, BAILOUT_FLOOR, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
 import {
   aiIncomingBids, aiWorldTransfers, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
 } from './transferEngine';
@@ -552,6 +552,7 @@ export function advanceMatchweek(g: GameState): void {
       }
     }
     payWeeklyWages(g, club);
+    credit(club, weeklySponsorship(g, club), 'tv');
     if (!pre && mw <= SEASON_WEEKS) credit(club, weeklyTV(club, pos), 'tv');
     if (club.id !== userId && club.playerIds.length < 19) aiSignFreeAgent(g, rng, club);
   }

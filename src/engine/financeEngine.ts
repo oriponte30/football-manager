@@ -61,7 +61,7 @@ export function weeklyTV(club: Club, position: number): number {
 }
 
 /** Season-rollover injection: league-position prize money plus season tickets and pre-season TV rights. */
-const INJECTION: Record<Tier, [number, number]> = { 1: [4_000_000, 11_000_000], 2: [1_100_000, 2_800_000], 3: [280_000, 630_000] };
+const INJECTION: Record<Tier, [number, number]> = { 1: [6_000_000, 16_000_000], 2: [1_700_000, 4_200_000], 3: [420_000, 950_000] };
 export function seasonInjection(tier: Tier, position: number, leagueSize: number, mult = 1, extra = 0): { prize: number; rights: number } {
   const [lo, hi] = INJECTION[tier];
   const t = Math.pow(Math.max(0, leagueSize - position) / Math.max(1, leagueSize - 1), 1.6);
@@ -86,8 +86,17 @@ export function expectedWeeklyIncome(club: Club): number {
 export function wageBudget(club: Club, g?: GameState): number {
   // normal weekly income, plus half of a mid-table summer injection spread over the season: wages can use it, the rest stays as transfer money
   const inj = seasonInjection(club.tier, 8, 16);
-  const base = (expectedWeeklyIncome(club) * 0.95 + ((inj.prize + inj.rights) * 0.5) / 30) * 1.1;
+  const base = (expectedWeeklyIncome(club) * 0.95 + ((inj.prize + inj.rights) * 0.5) / 30) * 1.25;
   return Math.round(base * (g ? squadFactor(g, club) : 1));
+}
+
+/**
+ * Weekly sponsorship, paid all year round (pre-season too): a bigger, better squad sells more shirts and boxes,
+ * so a club that pays its wages is never starved. Capped, and scaled by squad quality, so a bloated bill still hurts.
+ */
+export function weeklySponsorship(g: GameState, club: Club): number {
+  const bill = weeklyBill(g, club);
+  return Math.round(Math.min(bill * 0.3, expectedWeeklyIncome(club) * 0.4) * squadFactor(g, club) / 100) * 100;
 }
 
 /** Average CA of a club's best XI. */
@@ -203,7 +212,7 @@ export function fmtMoney(v: number): string {
   return `${sign}$${Math.round(a)}`;
 }
 
-/** Summer funding: league-position money, scaled by squad quality, plus the owners backing the wage commitments (8 weeks of the bill). */
+/** Summer funding: league-position money, scaled by squad quality, plus the owners backing the wage commitments (14 weeks of the bill). */
 export function summerFunding(g: GameState, club: Club, position: number, leagueSize: number): { prize: number; rights: number } {
-  return seasonInjection(club.tier, position, leagueSize, squadFactor(g, club), weeklyBill(g, club) * 8);
+  return seasonInjection(club.tier, position, leagueSize, squadFactor(g, club), weeklyBill(g, club) * 14);
 }

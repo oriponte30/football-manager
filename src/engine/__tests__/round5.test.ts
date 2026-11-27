@@ -167,9 +167,9 @@ describe('finances make sense', () => {
     const club = g.clubs[g.manager.clubId!];
     club.board.value = 100; club.board.patience = 0.05;
     for (let w = 0; w < 3; w++) advanceMatchweek(g);
-    expect(club.finances.ledger.tv).toBe(0); // pre-season: no instalments yet
+    const pre = club.finances.ledger.tv; // pre-season: sponsorship only, no TV instalments yet
     for (let w = 0; w < 4; w++) advanceMatchweek(g);
-    expect(club.finances.ledger.tv).toBeGreaterThan(0);
+    expect(club.finances.ledger.tv).toBeGreaterThan(pre * 2);
     // the budget is a guide: a fee that fits in the bank is not blocked by the board
     club.finances.bank = weeklyBill(g, club) * (RESERVE_WEEKS + 1);
     expect(spendable(g, club)).toBe(weeklyBill(g, club));
@@ -233,7 +233,7 @@ describe('1990s valuation', () => {
 
 describe('season injection and bailout', () => {
   it('injection stays inside the tier ranges and rewards finishing high', () => {
-    for (const [tier, lo, hi] of [[1, 4e6, 11e6], [2, 11e5, 28e5], [3, 28e4, 63e4]] as const) {
+    for (const [tier, lo, hi] of [[1, 6e6, 16e6], [2, 17e5, 42e5], [3, 42e4, 95e4]] as const) {
       const top = seasonInjection(tier, 1, 16); const bottom = seasonInjection(tier, 16, 16);
       expect(top.prize + top.rights).toBeGreaterThanOrEqual(hi * 0.99); expect(top.prize + top.rights).toBeLessThanOrEqual(hi * 1.01);
       expect(bottom.prize + bottom.rights).toBeGreaterThanOrEqual(lo * 0.99); expect(bottom.prize + bottom.rights).toBeLessThanOrEqual(lo * 1.01);
