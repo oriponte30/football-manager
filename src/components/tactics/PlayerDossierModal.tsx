@@ -205,7 +205,7 @@ function BidDesk({ playerId, scouting, hasReport }: { playerId: string; scouting
         <div className="text-xs opacity-70 mt-1">Report arrives by fax in {scoutStars >= 3 ? '1 week' : '2 weeks'}.</div>
       </div>
       <div className="paper p-3">
-        <div className="font-bold flex items-center gap-1"><Send size={16} /> Step 2 · Fax a bid {!open && <span className="text-red-700 text-sm ml-2">(window closed — opens MW 16–19 / summer: pre-season to MW 5)</span>}</div>
+        <div className="font-bold flex items-center gap-1"><Send size={16} /> Step 2 · Fax a bid {!open && <span className="text-red-700 text-sm ml-2">(window closed: you can still bid and negotiate, he joins when it opens — opens MW 16–19 / summer: pre-season to MW 5)</span>}</div>
         <div className="flex flex-wrap gap-3 items-center mt-2 text-sm">
           <div className="seg"><button className={type === 'TRANSFER' ? 'on' : ''} onClick={() => setType('TRANSFER')}>TRANSFER</button><button className={type === 'LOAN' ? 'on' : ''} onClick={() => setType('LOAN')}>LOAN</button></div>
           {type === 'TRANSFER' ? (
@@ -226,8 +226,8 @@ function BidDesk({ playerId, scouting, hasReport }: { playerId: string; scouting
           )}
         </div>
         <div className="flex items-center gap-3 mt-2">
-          <button className="btn btn-amber" disabled={!open || club.finances.bank < 0} onClick={() => s.bid({ playerId: p.id, fee, wage, years, includePlayerId: include && incId ? incId : null, type, loanWageShare: share })}>FAX BID ▶</button>
-          <span className="text-xs opacity-70">Step 3 · Reply arrives next turn: Accept / Counter / Reject. Then sign the contract from the fax.</span>
+          <button className="btn btn-amber" disabled={club.finances.bank < 0} onClick={() => s.bid({ playerId: p.id, fee, wage, years, includePlayerId: include && incId ? incId : null, type, loanWageShare: share })}>FAX BID ▶</button>
+          <span className="text-xs opacity-70">Step 3 · The club replies at once: Accept / Counter / Reject. Then agree terms from the fax.</span>
         </div>
         {club.finances.bank < 0 && <div className="text-red-700 text-sm mt-1">IN THE RED — signings are blocked.</div>}
       </div>

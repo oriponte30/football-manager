@@ -22,7 +22,7 @@ import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression }
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
 import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, trimToWageBudget, wageBudget, weeklySponsorship, TV_WEEKLY_SHARE, seasonInjection, summerFunding, BAILOUT_FLOOR, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
 import {
-  aiIncomingBids, aiWorldTransfers, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
+  aiIncomingBids, aiWorldTransfers, executeAgreedDeals, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
 } from './transferEngine';
 import { generateScoutReport } from './scoutingEngine';
 import { INTAKE_WEEKS, youthIntake } from './academyEngine';
@@ -412,7 +412,7 @@ export function sackManager(g: GameState, rng: Rng, reason: string): void {
   g.manager.reputation = clamp(g.manager.reputation - 8, 1, 100);
   g.manager.clubId = null;
   g.status = 'SACKED';
-  for (const b of g.bids) if (b.direction === 'OUTGOING' && (b.status === 'PENDING' || b.status === 'ACCEPTED' || b.status === 'COUNTERED')) b.status = 'COLLAPSED';
+  for (const b of g.bids) if (b.direction === 'OUTGOING' && (b.status === 'PENDING' || b.status === 'ACCEPTED' || b.status === 'COUNTERED' || b.status === 'AGREED')) b.status = 'COLLAPSED';
   g.scouting = [];
   for (const id of g.pendingYouth) delete g.players[id];
   g.pendingYouth = [];
@@ -571,7 +571,7 @@ export function advanceMatchweek(g: GameState): void {
     // transfers
     for (const b of g.bids) {
       if (b.direction === 'OUTGOING' && b.status === 'PENDING' && b.resolveWeek <= mw && b.season === g.season.year) resolveOutgoingBid(g, rng, b);
-      else if (b.direction === 'OUTGOING' && (b.status === 'ACCEPTED' || b.status === 'COUNTERED') && (b.resolveWeek < mw - 1 || windowFor(mw + 1) === 'CLOSED' && windowFor(mw) !== 'CLOSED')) {
+      else if (b.direction === 'OUTGOING' && (b.status === 'ACCEPTED' || b.status === 'COUNTERED') && b.resolveWeek < mw - 2) {
         b.status = 'COLLAPSED';
         for (const f of g.faxes) if (f.bidId === b.id) f.resolved = true;
       }
@@ -622,6 +622,7 @@ export function advanceMatchweek(g: GameState): void {
   g.lastSimMs = Math.round(simMs * 10) / 10;
   g.season.matchweek = mw + 1;
   g.season.window = windowFor(g.season.matchweek);
+  executeAgreedDeals(g); // deals agreed while the window was shut go through the day it opens
   pruneNews(g);
   if (g.season.matchweek > SEASON_WEEKS) finalizeSeason(g, rng);
   if (pre) { g.phase = 'PREP'; g.dayAfter = { recovery: null, pressDone: false }; g.pressConference = null; }
@@ -934,7 +935,7 @@ export function startNextSeason(g: GameState): void {
   }
 
   // housekeeping
-  g.bids = [];
+  g.bids = g.bids.filter((b) => b.status === 'AGREED' && g.players[b.playerId]?.clubId); // deals agreed over the winter and spring still happen in the summer window
   g.scouting = [];
   g.dilemma = null;
   g.lastUserResults = [];
@@ -945,6 +946,7 @@ export function startNextSeason(g: GameState): void {
 
   g.season.year += 1;
   setupSeason(g, rng, summary.euroEntrants.filter((id) => g.clubs[id]).slice(0, 16).length === 16 ? summary.euroEntrants : initialEuroEntrants(g));
+  executeAgreedDeals(g); // deals agreed outside the window go through as the summer window opens
   if (userId) {
     const club = g.clubs[userId];
     club.tactics.lineup = club.tactics.lineup.map((id) => (id && g.players[id]?.clubId === userId ? id : null));

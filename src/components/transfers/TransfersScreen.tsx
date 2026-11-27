@@ -104,7 +104,7 @@ function Bids() {
         {bids.map((b) => {
           const p = g.players[b.playerId];
           const other = b.direction === 'OUTGOING' ? (b.sellerClubId ? g.clubs[b.sellerClubId]?.name : '—') : g.clubs[b.buyerClubId]?.name;
-          const color = b.status === 'ACCEPTED' || b.status === 'COMPLETED' ? 'stamp-green' : b.status === 'REJECTED' || b.status === 'COLLAPSED' ? 'stamp-red' : 'stamp-blue';
+          const color = b.status === 'ACCEPTED' || b.status === 'AGREED' || b.status === 'COMPLETED' ? 'stamp-green' : b.status === 'REJECTED' || b.status === 'COLLAPSED' ? 'stamp-red' : 'stamp-blue';
           return (
             <div key={b.id} className="flex flex-wrap items-center gap-3 border-b border-black/10 py-1 text-sm">
               <span className="w-20 font-mono">{b.direction === 'OUTGOING' ? 'OUT →' : '← IN'}</span>

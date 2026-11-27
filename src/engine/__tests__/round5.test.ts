@@ -8,11 +8,11 @@ import { topUpFreeAgents } from '../freeAgentPool';
 import { generatePlayer } from '../playerGenerator';
 import { loanOutPlayer, renewContract } from '../transferEngine';
 import { spendable, weeklyBill, RESERVE_WEEKS } from '../financeEngine';
-import { submitBid, askingPrice, resolveOutgoingBid } from '../transferEngine';
+import { submitBid, askingPrice, resolveOutgoingBid, completeBid, executeAgreedDeals, answerIncomingBid } from '../transferEngine';
 import { refreshShortlist } from '../shortlistEngine';
 import { syncBench } from '../lineup';
 import { applyInjury, tickRecoveryWithAlert } from '../injuryEngine';
-import { valuePlayer } from '../transferEngine';
+import { valuePlayer, demandedWage } from '../transferEngine';
 import { wageFor } from '../playerGenerator';
 import type { Player } from '../../types/player';
 import { seasonInjection, BAILOUT_FLOOR, fitSaveToWageBudget } from '../financeEngine';
@@ -335,5 +335,42 @@ describe('star negotiations and shortlist', () => {
     const ages = g.shortlist!.ids.map((id) => g.players[id].age);
     expect(ages.some((a) => a <= 22)).toBe(true);
     expect(ages.some((a) => a >= 23 && a <= 28)).toBe(true);
+  });
+});
+
+describe('deals outside the window', () => {
+  it('a bid is answered the same day, the deal is agreed shut-window and completes when it opens', () => {
+    const g = career(621);
+    const club = g.clubs[g.manager.clubId!];
+    club.finances.bank = 99e6; g.season.matchweek = 10; g.season.window = 'CLOSED';
+    const target = Object.values(g.players).find((p) => p.clubId && p.clubId !== club.id && !p.loanFromClubId && p.ca < 60 && g.clubs[p.clubId].tier === club.tier)!;
+    const r = submitBid(g, club.id, { playerId: target.id, fee: valuePlayer(target) * 3, wage: demandedWage(target, club, g) * 2, years: 3, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
+    expect(r.ok).toBe(true);
+    const bid = g.bids[g.bids.length - 1];
+    expect(bid.status).not.toBe('PENDING'); // answered immediately
+    if (bid.status !== 'ACCEPTED') return;
+    const c = completeBid(g, bid.id, false, demandedWage(target, club, g) * 2, 3);
+    expect(c.ok).toBe(true);
+    expect(bid.status).toBe('AGREED');
+    expect(g.players[target.id].clubId).not.toBe(club.id); // still at his old club
+    g.season.window = 'SUMMER';
+    executeAgreedDeals(g);
+    expect(g.players[target.id].clubId).toBe(club.id);
+    expect(bid.status).toBe('COMPLETED');
+  });
+  it('AI bids arrive outside the window and the sale only happens when it opens', () => {
+    const g = career(622);
+    const club = g.clubs[g.manager.clubId!];
+    g.season.matchweek = 10; g.season.window = 'CLOSED';
+    const rng = createRng(9);
+    for (let i = 0; i < 40 && !g.bids.some((b) => b.direction === 'INCOMING'); i++) aiIncomingBids(g, rng, club.id);
+    const bid = g.bids.find((b) => b.direction === 'INCOMING' && b.status === 'PENDING');
+    expect(bid).toBeTruthy();
+    answerIncomingBid(g, bid!.id, true);
+    expect(bid!.status).toBe('AGREED');
+    expect(g.players[bid!.playerId].clubId).toBe(club.id);
+    g.season.window = 'SUMMER';
+    executeAgreedDeals(g);
+    expect(g.players[bid!.playerId].clubId).toBe(bid!.buyerClubId);
   });
 });

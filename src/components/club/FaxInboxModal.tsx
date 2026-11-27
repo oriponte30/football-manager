@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
+import { windowOpen } from '../../engine/transferEngine';
 import { useGame, useUserClub, Modal, PosTag, NationTag, ovrRead, paRead, valueRead } from '../ui';
 import { PlayerFace } from '../Face';
 import type { FaxMessage } from '../../types/transfers';
@@ -96,14 +97,14 @@ function FaxSheet({ f }: { f: FaxMessage }) {
         {!f.resolved && f.kind === 'BID_RESPONSE' && (bid?.status === 'ACCEPTED' || bid?.status === 'COUNTERED') && (
           <ContractTerms key={bid.id} wage={wage} setWage={setWage} years={years} setYears={setYears} />
         )}
-        {!f.resolved && f.kind === 'BID_RESPONSE' && bid?.status === 'ACCEPTED' && <button className="btn btn-green" onClick={() => s.finalizeBid(bid.id, false, wage, years)}>SIGN THE CONTRACT ✍</button>}
+        {!f.resolved && f.kind === 'BID_RESPONSE' && bid?.status === 'ACCEPTED' && <button className="btn btn-green" onClick={() => s.finalizeBid(bid.id, false, wage, years)}>{windowOpen(g) ? 'SIGN THE CONTRACT ✍' : 'AGREE TERMS ✍ (JOINS WHEN WINDOW OPENS)'}</button>}
         {!f.resolved && f.kind === 'BID_RESPONSE' && bid?.status === 'COUNTERED' && <>
-          <button className="btn btn-green" onClick={() => s.finalizeBid(bid.id, true, wage, years)}>ACCEPT COUNTER & SIGN</button>
+          <button className="btn btn-green" onClick={() => s.finalizeBid(bid.id, true, wage, years)}>ACCEPT COUNTER & {windowOpen(g) ? 'SIGN' : 'AGREE'}</button>
           <button className="btn btn-red" onClick={() => s.resolveFax(f.id)}>WALK AWAY</button>
         </>}
         {!f.resolved && f.kind === 'LOAN_RESPONSE' && bid?.status === 'ACCEPTED' && <button className="btn btn-green" onClick={() => s.finalizeBid(bid.id, false)}>CONFIRM LOAN</button>}
         {!f.resolved && f.kind === 'INCOMING_BID' && bid && bid.status === 'PENDING' && <>
-          <button className="btn btn-green" onClick={() => s.answerIncoming(bid.id, true)}>ACCEPT {fmtMoney(bid.fee)}</button>
+          <button className="btn btn-green" onClick={() => s.answerIncoming(bid.id, true)}>ACCEPT {fmtMoney(bid.fee)}{windowOpen(g) ? '' : ' (LEAVES WHEN WINDOW OPENS)'}</button>
           <CounterAsk key={`${bid.id}-${bid.fee}`} fee={bid.fee} onAsk={(v) => s.counterIncoming(bid.id, v)} />
           <button className="btn btn-red" onClick={() => s.answerIncoming(bid.id, false)}>REJECT</button>
         </>}

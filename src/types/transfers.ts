@@ -1,7 +1,7 @@
 import type { StatKey, Trait } from './player';
 
 export type BidType = 'TRANSFER' | 'LOAN';
-export type BidStatus = 'PENDING' | 'ACCEPTED' | 'COUNTERED' | 'REJECTED' | 'COMPLETED' | 'COLLAPSED';
+export type BidStatus = 'PENDING' | 'ACCEPTED' | 'AGREED' | 'COUNTERED' | 'REJECTED' | 'COMPLETED' | 'COLLAPSED';
 export type BidDirection = 'OUTGOING' | 'INCOMING';
 
 export interface TransferBid {

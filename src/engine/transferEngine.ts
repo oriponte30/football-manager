@@ -10,7 +10,7 @@ import type { Contract, Player } from '../types/player';
 import type { TransferBid, FaxMessage, TradeProposal } from '../types/transfers';
 import { POSITION_GROUP } from '../data/formations';
 import { COUNTRIES } from '../data/countries';
-import { clamp, hash01, type Rng } from './rng';
+import { clamp, createRng, hash01, type Rng } from './rng';
 import { fullName, moraleLevel } from './ratings';
 import { nextId } from './ids';
 import { wageFor } from './playerGenerator';
@@ -160,9 +160,8 @@ export function submitBid(g: GameState, buyerId: string, input: BidInput): { ok:
   const pureSwap = input.type === 'TRANSFER' && input.fee <= 0 && !!input.includePlayerId; // a straight swap costs nothing, so debt doesn't matter
   if (!pureSwap && buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: the bank has frozen all new signings.' };
   if (!p.clubId) return { ok: false, message: 'Free agent: offer a contract directly.' };
-  if (!windowOpen(g)) return { ok: false, message: 'The transfer window is closed.' };
   if (p.loanFromClubId) return { ok: false, message: 'He is on loan there and cannot be sold.' };
-  if (g.bids.some((b) => b.playerId === p.id && b.direction === 'OUTGOING' && (b.status === 'PENDING' || b.status === 'COUNTERED' || b.status === 'ACCEPTED'))) {
+  if (g.bids.some((b) => b.playerId === p.id && b.direction === 'OUTGOING' && (b.status === 'PENDING' || b.status === 'COUNTERED' || b.status === 'ACCEPTED' || b.status === 'AGREED'))) {
     return { ok: false, message: 'You already have a live bid for this player.' };
   }
   if (input.type === 'TRANSFER' && input.fee > buyer.finances.bank) return { ok: false, message: 'Not enough in the bank to cover that fee.' };
@@ -173,7 +172,16 @@ export function submitBid(g: GameState, buyerId: string, input: BidInput): { ok:
     resolveWeek: g.season.matchweek, season: g.season.year, note: '',
   };
   g.bids.push(bid);
-  return { ok: true, message: `Bid faxed to ${g.clubs[p.clubId].name}. Expect a reply next turn.` };
+  // the club answers the same day, window open or not
+  const rng = createRng((g.rngState ^ Math.imul(g.bids.length + 1, 0x9e3779b1)) >>> 0);
+  resolveOutgoingBid(g, rng, bid);
+  g.rngState = (g.rngState + 1) >>> 0;
+  const club = g.clubs[p.clubId].name;
+  const when = windowOpen(g) ? '' : ' The deal will go through when the transfer window opens.';
+  const msg = bid.status === 'ACCEPTED' ? `${club} accept. Open the fax to agree personal terms.${when}`
+    : bid.status === 'COUNTERED' ? `${club} come back with a counter-offer of ${fmtMoney(bid.counterFee ?? 0)}. Check the fax.${when}`
+      : bid.status === 'REJECTED' || bid.status === 'COLLAPSED' ? `${club} turn the bid down. Check the fax.` : `Bid faxed to ${club}.`;
+  return { ok: true, message: msg };
 }
 
 function positionalNeed(g: GameState, club: Club, p: Player): boolean {
@@ -303,7 +311,7 @@ export function movePlayer(g: GameState, p: Player, toClubId: string | null): vo
 }
 
 /** Finalise an accepted (or countered-then-accepted) user bid. */
-export function completeBid(g: GameState, bidId: string, acceptCounter = false, wageOverride?: number, yearsOverride?: number): { ok: boolean; message: string } {
+export function completeBid(g: GameState, bidId: string, acceptCounter = false, wageOverride?: number, yearsOverride?: number, atWindow = false): { ok: boolean; message: string } {
   const bid = g.bids.find((b) => b.id === bidId);
   if (!bid) return { ok: false, message: 'Bid not found.' };
   if (wageOverride !== undefined && wageOverride > 0) bid.wage = Math.round(wageOverride);
@@ -326,6 +334,7 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
     const cost = Math.round(p.contract.wage * bid.loanWageShare);
     const cap = canAffordWage(g, buyer, cost);
     if (!cap.ok) return { ok: false, message: cap.message };
+    if (!windowOpen(g) && !atWindow) return agreeForWindow(g, bid, p, seller);
     detachFromClub(g, p);
     p.loanFromClubId = seller.id;
     p.clubId = buyer.id;
@@ -340,6 +349,7 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
   if (!will.ok) return { ok: false, message: will.reason };
   const cap = canAffordWage(g, buyer, bid.wage);
   if (!cap.ok) return { ok: false, message: cap.message };
+  if (!windowOpen(g) && !atWindow) return agreeForWindow(g, bid, p, seller);
 
   buyer.finances.bank -= bid.fee;
   buyer.finances.ledger.transfers += bid.fee;
@@ -360,6 +370,47 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
   if (bid.type === 'TRANSFER') newsTransfer(g, null, p, seller, buyer, bid.fee);
   resolveFaxesFor(g, bid.id);
   return { ok: true, message: `${fullName(p)} signs a ${bid.years}-year deal for ${fmtMoney(bid.fee)}.` };
+}
+
+/** Everything is settled but the window is shut: the deal is parked and goes through the day it opens. */
+function agreeForWindow(g: GameState, bid: TransferBid, p: Player, seller: Club): { ok: boolean; message: string } {
+  bid.status = 'AGREED';
+  resolveFaxesFor(g, bid.id);
+  const nxt = windowWeeks(g.season.matchweek);
+  fax(g, {
+    kind: 'BID_RESPONSE', from: seller.name, title: `AGREED: ${fullName(p)}`, playerId: p.id, bidId: bid.id, resolved: true,
+    body: `Everything is agreed for ${fullName(p)}${bid.type === 'LOAN' ? ' (loan)' : ` at ${fmtMoney(bid.fee)}`}. The transfer window is shut, so he joins as soon as it opens${nxt.next ? ` (${nxt.next === 'WINTER' ? 'winter' : 'summer'} window)` : ''}.`,
+  });
+  return { ok: true, message: `Deal agreed. ${fullName(p)} joins when the transfer window opens.` };
+}
+
+/** Deals agreed while the window was shut are carried out the moment it opens (both directions). */
+export function executeAgreedDeals(g: GameState): void {
+  if (!windowOpen(g)) return;
+  const userId = g.manager.clubId;
+  for (const bid of g.bids) {
+    if (bid.status !== 'AGREED') continue;
+    const p = g.players[bid.playerId];
+    const seller = bid.sellerClubId ? g.clubs[bid.sellerClubId] : null;
+    const buyer = g.clubs[bid.buyerClubId];
+    const mine = bid.direction === 'OUTGOING' ? bid.buyerClubId === userId : bid.sellerClubId === userId;
+    const fail = (why: string): void => {
+      bid.status = 'COLLAPSED';
+      fax(g, { kind: 'NEWS', from: 'Transfer Desk', title: 'DEAL COLLAPSED', body: why, resolved: true });
+    };
+    if (!mine || !p || !seller || !buyer || p.clubId !== seller.id) { if (mine) fail(`The agreed deal for ${p ? fullName(p) : 'the player'} fell through: he is no longer available.`); else bid.status = 'COLLAPSED'; continue; }
+    if (bid.direction === 'OUTGOING') {
+      bid.status = 'ACCEPTED';
+      const r = completeBid(g, bid.id, false, undefined, undefined, true);
+      if (!r.ok) fail(`The agreed deal for ${fullName(p)} fell through: ${r.message}`);
+      else fax(g, { kind: 'NEWS', from: 'Transfer Desk', title: `SIGNED: ${fullName(p)}`, body: r.message, resolved: true });
+    } else {
+      if (buyer.finances.bank < bid.fee) { fail(`${buyer.name} can no longer afford ${fullName(p)}. The deal is off.`); continue; }
+      bid.status = 'PENDING';
+      const r = answerIncomingBid(g, bid.id, true);
+      fax(g, { kind: 'NEWS', from: 'Transfer Desk', title: `SOLD: ${fullName(p)}`, body: r.message, resolved: true });
+    }
+  }
 }
 
 export function resolveFaxesFor(g: GameState, bidId: string): void {
@@ -608,7 +659,6 @@ export function releasePlayer(g: GameState, playerId: string): { ok: boolean; me
 /* ------------------------- AI bids for the user's players ------------------------- */
 
 export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void {
-  if (!windowOpen(g)) return;
   processLoanList(g, rng, userClubId);
   if (g.bids.filter((b) => b.direction === 'INCOMING' && b.status === 'PENDING').length >= 2) return;
   if (listedTransferBid(g, rng, userClubId)) return;
@@ -620,7 +670,7 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
   const avg = avgCa(g, user);
   const prospect = (p: Player) => p.age <= 23 && p.truePA >= p.ca + 10;
   const wanted = squad.filter((p) => p.age <= 31 && !(p.age >= 30 && p.ca < avg + 3)
-    && (p.ca >= avg + 1 || (p.form >= 2 && p.ca >= avg - 3) || prospect(p)) && !g.bids.some((b) => b.playerId === p.id && b.status === 'PENDING'));
+    && (p.ca >= avg + 1 || (p.form >= 2 && p.ca >= avg - 3) || prospect(p)) && !g.bids.some((b) => b.playerId === p.id && (b.status === 'PENDING' || b.status === 'AGREED')));
   if (wanted.length === 0) return;
   const target = rng.weighted(wanted, wanted.map((p) => Math.pow(Math.max(1, valuePlayer(p) / 1e5), 1.1) * (1 + Math.max(0, p.form) / 6) * (prospect(p) ? 1.6 : 1)));
   const sameTierOk = rng.chance(0.5); // peers of about your size make offers too, not just bigger clubs
@@ -635,8 +685,8 @@ export function aiIncomingBids(g: GameState, rng: Rng, userClubId: string): void
   const reach = 1.12 + Math.min(0.2, (buyer.reputation - user.reputation) / 150) + rng.range(0, 0.12);
   const walkAway = Math.min(buyer.finances.bank * 0.6, Math.round(base * reach / 5000) * 5000);
   const clause = target.contract.releaseClause;
-  if (clause !== null && rng.chance(0.22) && buyer.finances.bank > clause) fee = clause;
-  if (clause !== null && fee >= clause) {
+  if (clause !== null && windowOpen(g) && rng.chance(0.22) && buyer.finances.bank > clause) fee = clause;
+  if (clause !== null && windowOpen(g) && fee >= clause) {
     // release clause triggered — poaching, no say
     buyer.finances.bank -= fee;
     credit(user, fee, 'sales');
@@ -710,6 +760,11 @@ export function answerIncomingBid(g: GameState, bidId: string, accept: boolean):
     bid.status = 'REJECTED';
     if (p && accept === false && p.ca >= avgCa(g, seller ?? buyer) + 3) p.moraleValue = clamp(p.moraleValue - 8, 0, 100);
     return { ok: true, message: 'Offer rejected.' };
+  }
+  if (!windowOpen(g)) {
+    bid.status = 'AGREED';
+    fax(g, { kind: 'NEWS', from: 'Transfer Desk', title: `AGREED SALE: ${fullName(p)}`, playerId: p.id, bidId: bid.id, resolved: true, body: `You have agreed to sell ${fullName(p)} to ${buyer.name} for ${fmtMoney(bid.fee)}. He stays until the transfer window opens, then leaves.` });
+    return { ok: true, message: `Sale agreed. ${fullName(p)} leaves when the transfer window opens.` };
   }
   buyer.finances.bank -= bid.fee;
   credit(seller, bid.fee, 'sales');
