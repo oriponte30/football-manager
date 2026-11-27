@@ -87,7 +87,9 @@ export function playerWillingness(g: GameState, p: Player, buyer: Club, wage: nu
   if (p.age <= 23 && years >= 4) need *= 1.05;
   if (years > 5 || years < 1) return { ok: false, reason: 'Contract length must be 1–5 years.' };
   if (p.age >= 33 && years > 2) return { ok: false, reason: 'At his age he only wants a short deal.' };
-  if (repGap > 40 && wage < need * 1.6) return { ok: false, reason: `${p.lastName} isn't interested in stepping down to a club of your stature.` };
+  // a star will only join a much smaller club if the step up is not absurd: otherwise the deal dies in contract talks
+  if (repGap > 50 && qualityGap > 12) return { ok: false, reason: `${p.lastName} will not drop down to a club of your stature. Build your reputation and squad first, then come back.` };
+  if (repGap > 30) need *= 1 + Math.min(0.5, (repGap - 30) / 40); // a big step down costs extra in wages
   if (wage < need) return { ok: false, reason: `His agent wants at least ${fmtMoney(Math.round(need / 10) * 10)}/wk.` };
   return { ok: true, reason: 'Terms agreed.' };
 }
@@ -193,7 +195,7 @@ export function resolveOutgoingBid(g: GameState, rng: Rng, bid: TransferBid): vo
   }
   if (bid.type === 'LOAN') return resolveLoan(g, rng, bid, p, seller, buyer);
 
-  const asking = askingPrice(g, p, seller, buyer);
+  let asking = askingPrice(g, p, seller, buyer);
   let effectiveFee = bid.fee;
   let tradeNote = '';
   if (bid.includePlayerId) {
@@ -213,20 +215,16 @@ export function resolveOutgoingBid(g: GameState, rng: Rng, bid: TransferBid): vo
     }
   }
   const clause = p.contract.releaseClause;
+  // a star will always be talked about, but his club prices him as one: the bigger the club above you, the bigger the premium
   const rank = seller.playerIds.map((id) => g.players[id]).filter(Boolean).sort((a, b) => b.ca - a.ca).findIndex((x) => x.id === p.id);
-  const keyMan = rank >= 0 && rank < 3 && buyer.reputation < seller.reputation;
-  if (keyMan && !(clause !== null && bid.fee >= clause) && effectiveFee < asking * 1.35) {
-    bid.status = 'REJECTED';
-    fax(g, {
-      kind: 'BID_RESPONSE', from: seller.name, title: `NOT FOR SALE: ${fullName(p)}`, playerId: p.id, bidId: bid.id, resolved: true,
-      body: `${fullName(p)} is one of our most important players and we are not selling him to a smaller club. ${effectiveFee >= asking ? 'Not at that price, anyway.' : 'Your offer does not come close.'}`,
-    });
-    return;
+  if (rank >= 0 && rank < 3 && buyer.reputation < seller.reputation) {
+    const repPremium = 1 + clamp((seller.reputation - buyer.reputation) / 200, 0, 0.15);
+    asking = Math.round((asking * (rank === 0 ? 1.25 : rank === 1 ? 1.18 : 1.12) * repPremium) / 5000) * 5000;
   }
   if ((clause !== null && bid.fee >= clause) || effectiveFee >= asking) {
     bid.status = 'ACCEPTED';
     bid.note = tradeNote;
-  } else if (effectiveFee >= asking * 0.78 && rng.chance(0.85)) {
+  } else if (effectiveFee >= asking * 0.7 && rng.chance(0.92)) {
     bid.status = 'COUNTERED';
     bid.counterFee = Math.round((asking - (effectiveFee - bid.fee)) / 5000) * 5000;
   } else {

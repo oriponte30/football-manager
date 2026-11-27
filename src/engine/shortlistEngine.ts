@@ -96,41 +96,61 @@ export function refreshShortlist(g: GameState, rng: Rng, force = false): void {
   const noise = (6 - stars) * 2.2 + (country !== club.country && stars < 3 ? 3 : 0);
   // a narrow brief means looking a little wider on quality
   const lo = avg - (wanted ? 6 : 3);
-  const hi = avg + 2 + stars * 1.6 + (wanted ? 2 : 0);
-  const scored: { p: Player; score: number; note: string }[] = [];
+  const hi = avg + 3 + stars * 1.8 + (wanted ? 2 : 0);
+  type Bucket = 'YOUNG' | 'MID' | 'VET';
+  const scored: { p: Player; score: number; note: string; bucket: Bucket }[] = [];
   const consider = (p: Player) => {
     if (p.clubId === userId || p.loanFromClubId || p.injuryWeeks > 3) return;
     if (wanted && !wanted.has(p.position)) return;
     const seller = p.clubId ? g.clubs[p.clubId] : null;
     if (seller && seller.reputation > club.reputation + 30) return; // out of reach
+    const bucket: Bucket = p.age <= 22 ? 'YOUNG' : p.age <= 28 ? 'MID' : 'VET';
     const perceived = p.ca + (rng.next() - 0.5) * noise;
-    const gem = p.age <= 21 && p.truePA >= avg + 10 && stars >= 3;
-    if (!gem && (perceived < lo || perceived > hi)) return;
+    // youngsters are judged on where they are heading, not just where they are
+    const perceivedPA = p.truePA + (rng.next() - 0.5) * noise;
+    const projected = bucket === 'YOUNG' ? perceived + Math.max(0, perceivedPA - perceived) * 0.55 : perceived;
+    const gem = bucket === 'YOUNG' && p.truePA >= avg + 10 && stars >= 3;
+    if (bucket === 'YOUNG') { if (!gem && (projected < lo || perceived < avg - 14 || projected > hi + 4)) return; }
+    else if (perceived < lo || perceived > hi) return;
     const value = valuePlayer(p);
-    if (seller && value > Math.max(club.finances.bank * 1.2, 75_000) && !gem) return;
-    let score = 10 - Math.abs(perceived - (avg + 3)) + rng.next() * 4;
-    if (POSITION_GROUP[p.position] === need) score += 4;
+    if (seller && value * 1.6 > Math.max(club.finances.bank, 75_000) && !gem) return; // must be able to pay roughly the asking price
+    const grp = POSITION_GROUP[p.position];
+    const groupNow = grpStrength(grp);
+    const lift = projected - groupNow; // does he actually improve that part of the team?
+    if (bucket !== 'YOUNG' && lift < -2 && grp !== need) return;
+    let score = 10 - Math.abs(projected - (avg + 4)) + Math.min(6, Math.max(-3, lift * 0.5)) + rng.next() * 4;
+    if (grp === need) score += 4;
     if (gem) score += stars * 1.5;
-    const note = gem ? 'Hidden gem' : need && POSITION_GROUP[p.position] === need ? `Fills a gap at ${need === 'ATT' ? 'the top end' : need === 'GK' ? 'keeper' : need === 'DEF' ? 'the back' : 'midfield'}` : p.age <= 23 ? 'Young, room to grow' : !seller ? 'No fee, wages only' : value < avg * 4000 ? 'Bargain' : 'Ready now';
-    scored.push({ p, score, note });
+    if (bucket === 'VET') score -= 2; // veterans fill the gaps, they should not be the whole list
+    const note = gem ? 'Hidden gem' : grp === need ? `Fills a gap at ${need === 'ATT' ? 'the top end' : need === 'GK' ? 'keeper' : need === 'DEF' ? 'the back' : 'midfield'}` : bucket === 'YOUNG' ? 'Young, room to grow' : lift > 3 ? 'Would walk into the side' : !seller ? 'No fee, wages only' : bucket === 'MID' ? 'In his prime' : 'Ready now';
+    scored.push({ p, score, note, bucket });
   };
   if (country === 'ANY' || country === club.country) for (const id of g.freeAgentIds) { const p = g.players[id]; if (p) consider(p); }
   // a poor scout sent abroad only gets round some of the clubs
   const pool = Object.values(g.clubs).filter((c) => c.id !== userId && (country === 'ANY' || c.country === country) && (c.country === club.country || stars >= 3 || rng.chance(0.4)));
   for (const c of pool) for (const id of c.playerIds) { const p = g.players[id]; if (p) consider(p); }
   scored.sort((a, b) => b.score - a.score);
+  // a balanced list: young prospects, players in their prime, and a few veterans
+  const quota: Record<Bucket, number> = { YOUNG: Math.ceil(size * 0.3), MID: Math.ceil(size * 0.4), VET: Math.max(1, Math.floor(size * 0.3)) };
+  const taken: Record<Bucket, number> = { YOUNG: 0, MID: 0, VET: 0 };
   const picked: typeof scored = [];
   const perGroup: Record<string, number> = {};
   let frees = 0;
-  for (const s of scored) {
+  const tryPick = (s: (typeof scored)[number], strict: boolean): boolean => {
+    if (picked.includes(s)) return false;
     const grp = POSITION_GROUP[s.p.position];
-    if (!wanted && (perGroup[grp] ?? 0) >= Math.ceil(size / 2)) continue;
-    if (!s.p.clubId && frees >= Math.ceil(size / 3)) continue;
+    if (strict && taken[s.bucket] >= quota[s.bucket]) return false;
+    if (!wanted && (perGroup[grp] ?? 0) >= Math.ceil(size / 2)) return false;
+    if (!s.p.clubId && frees >= Math.ceil(size / 3)) return false;
     if (!s.p.clubId) frees++;
     perGroup[grp] = (perGroup[grp] ?? 0) + 1;
+    taken[s.bucket]++;
     picked.push(s);
-    if (picked.length >= size) break;
-  }
+    return true;
+  };
+  for (const s of scored) { if (picked.length >= size) break; tryPick(s, true); }
+  for (const s of scored) { if (picked.length >= size) break; tryPick(s, false); } // top up if a bucket ran dry
+  picked.sort((x, y) => y.score - x.score);
   g.shortlist = {
     ids: picked.map((s) => s.p.id),
     year: g.season.year,

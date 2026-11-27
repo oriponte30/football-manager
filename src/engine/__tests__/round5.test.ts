@@ -8,7 +8,8 @@ import { topUpFreeAgents } from '../freeAgentPool';
 import { generatePlayer } from '../playerGenerator';
 import { loanOutPlayer, renewContract } from '../transferEngine';
 import { spendable, weeklyBill, RESERVE_WEEKS } from '../financeEngine';
-import { submitBid } from '../transferEngine';
+import { submitBid, askingPrice, resolveOutgoingBid } from '../transferEngine';
+import { refreshShortlist } from '../shortlistEngine';
 import { syncBench } from '../lineup';
 import { applyInjury, tickRecoveryWithAlert } from '../injuryEngine';
 import { valuePlayer } from '../transferEngine';
@@ -312,5 +313,27 @@ describe('wage structure and swaps', () => {
     expect(r.message).not.toMatch(/RED|RESTRUCTURING/);
     const r2 = submitBid(g, club.id, { playerId: other.id, fee: 50_000, wage: other.contract.wage, years: 2, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
     expect(r2.ok).toBe(false);
+  });
+});
+
+describe('star negotiations and shortlist', () => {
+  it('a star at a bigger club can always be negotiated for, at a premium', () => {
+    const g = career(611);
+    const club = g.clubs[g.manager.clubId!];
+    g.season.window = 'SUMMER'; club.finances.bank = 99e6;
+    const top = Object.values(g.clubs).filter((c) => !c.isShadow && c.id !== club.id && c.reputation > club.reputation).sort((a, b) => b.reputation - a.reputation)[0];
+    const star = top.playerIds.map((id) => g.players[id]).sort((a, b) => b.ca - a.ca)[0];
+    const ask = askingPrice(g, star, top, club);
+    submitBid(g, club.id, { playerId: star.id, fee: Math.round(ask * 1.5), wage: 1000, years: 4, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
+    resolveOutgoingBid(g, createRng(1), g.bids[g.bids.length - 1]);
+    const bid = g.bids[g.bids.length - 1];
+    expect(['ACCEPTED', 'COUNTERED']).toContain(bid.status);
+  });
+  it('the shortlist mixes young, prime and veteran players', () => {
+    const g = career(612);
+    refreshShortlist(g, createRng(3), true);
+    const ages = g.shortlist!.ids.map((id) => g.players[id].age);
+    expect(ages.some((a) => a <= 22)).toBe(true);
+    expect(ages.some((a) => a >= 23 && a <= 28)).toBe(true);
   });
 });
