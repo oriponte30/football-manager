@@ -124,7 +124,7 @@ function loadIntoGame(g: GameState): void {
   setTimeout(() => {
     warmUpEngine(g);
     const cur = useGameStore.getState().game;
-    if (cur && (!cur.wageFitV2 || needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const c = structuredClone(cur); topUpFreeAgents(c); backfillSecondaries(c); fitSaveToWageBudget(c); useGameStore.setState({ game: c }); }
+    if (cur && (!cur.wageFitV3 || needsCoverage(cur) || Object.values(cur.players).some((p) => p.secondaryPosition === undefined))) { const c = structuredClone(cur); topUpFreeAgents(c); backfillSecondaries(c); fitSaveToWageBudget(c); useGameStore.setState({ game: c }); }
   }, 0);
 }
 

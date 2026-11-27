@@ -2,7 +2,7 @@
  * World generation: 5 countries, 3 full tiers for the active nation, shadow
  * Tier 1s for the other four, staff, free agents and the 3 faxed job offers.
  */
-import { trimToWageBudget } from './financeEngine';
+import { trimToWageBudget, weeklyBill, squadFactor } from './financeEngine';
 import type { CountryCode, GameState, League, Tier } from '../types/world';
 import { COUNTRY_CODES } from '../types/world';
 import type { ArchetypeId, Club, BoardGoal } from '../types/club';
@@ -325,6 +325,8 @@ export function generateWorld(managerName: string, country: CountryCode, seed: n
 
   generateStaffMarket(g, rng, country);
   for (const c of Object.values(g.clubs)) if (!c.isShadow) trimToWageBudget(g, c);
+  // opening funds follow the size of the squad: owners back 10 weeks of the wage bill, scaled by how good the XI is
+  for (const c of Object.values(g.clubs)) if (!c.isShadow) c.finances.bank += Math.round((weeklyBill(g, c) * 10 * squadFactor(g, c)) / 1000) * 1000;
 
   // initial European Cup entrants: top 3 by strength per Tier 1 + 4th from strongest nation
   const euroEntrants = initialEuroEntrants(g);

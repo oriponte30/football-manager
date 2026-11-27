@@ -62,10 +62,10 @@ export function weeklyTV(club: Club, position: number): number {
 
 /** Season-rollover injection: league-position prize money plus season tickets and pre-season TV rights. */
 const INJECTION: Record<Tier, [number, number]> = { 1: [4_000_000, 11_000_000], 2: [1_100_000, 2_800_000], 3: [280_000, 630_000] };
-export function seasonInjection(tier: Tier, position: number, leagueSize: number): { prize: number; rights: number } {
+export function seasonInjection(tier: Tier, position: number, leagueSize: number, mult = 1, extra = 0): { prize: number; rights: number } {
   const [lo, hi] = INJECTION[tier];
   const t = Math.pow(Math.max(0, leagueSize - position) / Math.max(1, leagueSize - 1), 1.6);
-  const total = lo + (hi - lo) * t;
+  const total = (lo + (hi - lo) * t) * mult + extra;
   return { prize: Math.round((total * 0.4) / 1000) * 1000, rights: Math.round((total * 0.6) / 1000) * 1000 };
 }
 
@@ -83,16 +83,32 @@ export function expectedWeeklyIncome(club: Club): number {
   return Math.round(((gate * 15) / 30 + weeklyTV(club, 8)) * 1.18); // calibrated against simulated seasons (cups and big games add gate money)
 }
 /** The weekly wage bill (players + staff) the club's income can carry. */
-export function wageBudget(club: Club): number {
+export function wageBudget(club: Club, g?: GameState): number {
   // normal weekly income, plus half of a mid-table summer injection spread over the season: wages can use it, the rest stays as transfer money
   const inj = seasonInjection(club.tier, 8, 16);
-  return Math.round(expectedWeeklyIncome(club) * 0.95 + ((inj.prize + inj.rights) * 0.5) / 30);
+  const base = (expectedWeeklyIncome(club) * 0.95 + ((inj.prize + inj.rights) * 0.5) / 30) * 1.1;
+  return Math.round(base * (g ? squadFactor(g, club) : 1));
+}
+
+/** Average CA of a club's best XI. */
+export function bestXI(g: GameState, club: Club): number {
+  const cas = club.playerIds.map((id) => g.players[id]?.ca ?? 0).sort((a, b) => b - a).slice(0, 11);
+  return cas.length ? cas.reduce((a, b) => a + b, 0) / cas.length : 0;
+}
+/** A strong squad draws bigger crowds, sponsors and owners' money: 0.85 for a weak XI up to 1.4 for a stacked one, relative to its league. */
+export function squadFactor(g: GameState, club: Club): number {
+  const lg = g.leagues[club.leagueId];
+  if (!lg || lg.clubIds.length < 2) return 1;
+  let sum = 0, n = 0;
+  for (const id of lg.clubIds) { const c = g.clubs[id]; if (c) { sum += bestXI(g, c); n++; } }
+  const diff = bestXI(g, club) - sum / Math.max(1, n);
+  return Math.max(0.85, Math.min(1.4, 1 + diff * 0.035));
 }
 
 /** Set a club's player contracts so its weekly bill fits the wage budget (AI clubs and new worlds; never the user's). */
 export function trimToWageBudget(g: GameState, club: Club): void {
   const w = weeklyWageBill(g, club);
-  const room = wageBudget(club) - w.staff;
+  const room = wageBudget(club, g) - w.staff;
   if (w.players <= room || room <= 0) return;
   const f = room / w.players;
   for (const id of club.playerIds) {
@@ -106,16 +122,17 @@ export function trimToWageBudget(g: GameState, club: Club): void {
  * (the user's wages only ever go down), lift any old transfer freeze, and top the bank up to the bailout floor.
  */
 export function fitSaveToWageBudget(g: GameState): boolean {
-  if (g.wageFitV2) return false;
+  if (g.wageFitV3) return false;
   for (const c of Object.values(g.clubs)) {
     if (c.isShadow) continue;
     trimToWageBudget(g, c);
     if (c.id === g.manager.clubId) {
       c.finances.restructuring = false;
-      if (c.finances.bank < BAILOUT_FLOOR[c.tier]) c.finances.bank = BAILOUT_FLOOR[c.tier];
+      const floor = Math.max(BAILOUT_FLOOR[c.tier], Math.round(weeklyBill(g, c) * 12 / 1000) * 1000);
+      if (c.finances.bank < floor) c.finances.bank = floor;
     }
   }
-  g.wageFitV2 = true;
+  g.wageFitV3 = true;
   return true;
 }
 
@@ -184,4 +201,9 @@ export function fmtMoney(v: number): string {
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`;
   if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}K`;
   return `${sign}$${Math.round(a)}`;
+}
+
+/** Summer funding: league-position money, scaled by squad quality, plus the owners backing the wage commitments (8 weeks of the bill). */
+export function summerFunding(g: GameState, club: Club, position: number, leagueSize: number): { prize: number; rights: number } {
+  return seasonInjection(club.tier, position, leagueSize, squadFactor(g, club), weeklyBill(g, club) * 8);
 }
