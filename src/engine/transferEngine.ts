@@ -155,8 +155,9 @@ export function submitBid(g: GameState, buyerId: string, input: BidInput): { ok:
   const buyer = g.clubs[buyerId];
   if (!p) return { ok: false, message: 'Unknown player.' };
   if (p.clubId === buyerId) return { ok: false, message: 'He already plays for you.' };
-  if (buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: the bank has frozen all new signings.' };
-  { const rb = restructureBlock(g, buyer); if (rb) return { ok: false, message: rb }; }
+  const pureSwap = input.type === 'TRANSFER' && input.fee <= 0 && !!input.includePlayerId; // a straight swap costs nothing, so debt doesn't matter
+  if (!pureSwap && buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: the bank has frozen all new signings.' };
+  if (!pureSwap) { const rb = restructureBlock(g, buyer); if (rb) return { ok: false, message: rb }; }
   if (!p.clubId) return { ok: false, message: 'Free agent: offer a contract directly.' };
   if (!windowOpen(g)) return { ok: false, message: 'The transfer window is closed.' };
   if (p.loanFromClubId) return { ok: false, message: 'He is on loan there and cannot be sold.' };
@@ -320,8 +321,9 @@ export function completeBid(g: GameState, bidId: string, acceptCounter = false, 
     bid.status = 'ACCEPTED';
   }
   if (bid.status !== 'ACCEPTED') return { ok: false, message: 'This deal is no longer available.' };
-  if (buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: signings are frozen.' };
-  { const rb = restructureBlock(g, buyer); if (rb) return { ok: false, message: rb }; }
+  const pureSwap = bid.type === 'TRANSFER' && bid.fee <= 0 && !!bid.includePlayerId;
+  if (!pureSwap && buyer.finances.bank < 0) return { ok: false, message: 'IN THE RED: signings are frozen.' };
+  if (!pureSwap) { const rb = restructureBlock(g, buyer); if (rb) return { ok: false, message: rb }; }
   if (bid.type === 'TRANSFER' && buyer.finances.bank < bid.fee) return { ok: false, message: 'Not enough funds for the fee.' };
 
   if (bid.type === 'LOAN') {
@@ -777,7 +779,6 @@ export function answerTrade(g: GameState, faxId: string, accept: boolean): { ok:
   const userId = g.manager.clubId;
   if (!theirs || !mine || !partner || !userId || mine.clubId !== userId || theirs.clubId !== partner.id) return { ok: false, message: 'Deal fell through.' };
   const user = g.clubs[userId];
-  { const rb = restructureBlock(g, user); if (rb) return { ok: false, message: rb }; }
   if (t.cashAdjustment < 0 && user.finances.bank < -t.cashAdjustment) return { ok: false, message: 'Not enough cash to cover the balance.' };
   movePlayer(g, mine, partner.id);
   movePlayer(g, theirs, userId);

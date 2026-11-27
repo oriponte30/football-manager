@@ -17,6 +17,7 @@ import type { Player } from '../../types/player';
 import { seasonInjection, BAILOUT_FLOOR, TIER_BILL_AVG, restructureBlock } from '../financeEngine';
 import { positionFit, fitTier, SECONDARY_OPTIONS } from '../../data/formations';
 import { backfillSecondaries } from '../playerGenerator';
+import { wageBudget } from '../financeEngine';
 import type { GameState } from '../../types/world';
 
 function career(seed: number): GameState {
@@ -279,5 +280,29 @@ describe('secondary positions', () => {
     expect(backfillSecondaries(g)).toBe(true);
     for (const p of all.slice(0, 50)) expect(p.secondaryPosition === null || SECONDARY_OPTIONS[p.position].includes(p.secondaryPosition as never)).toBe(true);
     expect(backfillSecondaries(g)).toBe(false);
+  });
+});
+
+describe('wage structure and swaps', () => {
+  it('no club starts with a wage bill its income cannot carry', () => {
+    for (const seed of [601, 602]) {
+      const g = generateWorld('T', 'ENG', seed);
+      for (const c of Object.values(g.clubs)) {
+        if (c.isShadow) continue;
+        expect(weeklyBill(g, c)).toBeLessThanOrEqual(wageBudget(c) * 1.02 + 200);
+      }
+    }
+  });
+  it('a straight swap is not blocked by debt or a restructuring freeze', () => {
+    const g = career(603);
+    const club = g.clubs[g.manager.clubId!];
+    club.finances.bank = -3_000_000; club.finances.restructuring = true;
+    g.season.window = 'SUMMER';
+    const mine = g.players[club.playerIds[5]];
+    const other = Object.values(g.players).find((p) => p.clubId && p.clubId !== club.id && !p.loanFromClubId && p.position === mine.position)!;
+    const r = submitBid(g, club.id, { playerId: other.id, fee: 0, wage: other.contract.wage, years: 2, includePlayerId: mine.id, type: 'TRANSFER', loanWageShare: 0 });
+    expect(r.message).not.toMatch(/RED|RESTRUCTURING/);
+    const r2 = submitBid(g, club.id, { playerId: other.id, fee: 50_000, wage: other.contract.wage, years: 2, includePlayerId: null, type: 'TRANSFER', loanWageShare: 0 });
+    expect(r2.ok).toBe(false);
   });
 });

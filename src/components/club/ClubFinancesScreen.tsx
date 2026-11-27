@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import { useGame, useUserClub, Stars } from '../ui';
 import CRTMonitor from '../layout/CRTMonitor';
-import { fmtMoney, weeklyWageBill, weeklyBill, spendable, RESERVE_WEEKS, TIER_BILL_AVG, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
+import { fmtMoney, weeklyWageBill, weeklyBill, wageBudget, spendable, RESERVE_WEEKS, TIER_BILL_AVG, facilityUpgradeCost, wageCap, type FacilityKey } from '../../engine/financeEngine';
 import { STAFF_ROLES, STAFF_ROLE_LABELS, type StaffRole } from '../../types/staff';
 import { starsFromInternal } from '../../engine/ratings';
 import { staffCeiling, staffInterest } from '../../engine/staffGenerator';
@@ -40,6 +40,7 @@ export default function ClubFinancesScreen() {
           {club.finances.restructuring && <div className="t-red">BOARD RESTRUCTURING — signings frozen until the weekly wage bill is under {fmtMoney(Math.round(TIER_BILL_AVG[club.tier] * 1.05))}.</div>}
           <div className="grid grid-cols-2 gap-x-6 mt-2">
             <div className="t-white">WEEKLY WAGE BILL</div><div>{fmtMoney(wages.players + wages.staff)} <span className="t-dim">(players {fmtMoney(wages.players)}, staff {fmtMoney(wages.staff)})</span></div>
+            <div className="t-white">WAGE BUDGET</div><div className={wages.players + wages.staff > wageBudget(club) ? 't-red' : 't-green'}>{fmtMoney(wageBudget(club))}/wk <span className="t-dim">(what your gates and TV money can carry. Bill is {Math.round(((wages.players + wages.staff) / Math.max(1, wageBudget(club))) * 100)}% of it)</span></div>
             <div className="t-white">SAFE BUDGET</div><div className={spendable(g, club) > 0 ? 't-green' : 't-red'}>{fmtMoney(Math.max(0, spendable(g, club)))} <span className="t-dim">(a guide: bank minus {RESERVE_WEEKS} weeks of wages. Not a limit, but dipping below it risks the red)</span></div>
             <div className="t-white">CASH RUNWAY</div><div>{weeklyBill(g, club) > 0 ? `${Math.max(0, Math.floor(club.finances.bank / weeklyBill(g, club)))} weeks of wages in the bank` : '–'}</div>
             {cap !== null && <><div className="t-white">LEAGUE WAGE CAP</div><div>{fmtMoney(cap)}/wk ({Math.round((wages.players / cap) * 100)}% used)</div></>}

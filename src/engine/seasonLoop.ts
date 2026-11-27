@@ -20,7 +20,7 @@ import { refreshShortlist } from './shortlistEngine';
 import { applyResultToTable, emptyRow, resolveShadowLeague, sortedTable } from './shadowLeagueEngine';
 import { updateForm, weeklyProgressionForClub, ageOneYear, seasonalProgression } from './progressionEngine';
 import { fanInterestAfterMatch, maybeCreateDilemma, updateMoraleAfterWeek } from './moraleEngine';
-import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, TV_WEEKLY_SHARE, seasonInjection, BAILOUT_FLOOR, TIER_BILL_AVG, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
+import { gateReceipts, payWeeklyWages, credit, tvMoney, weeklyTV, weeklyBill, trimToWageBudget, TV_WEEKLY_SHARE, seasonInjection, BAILOUT_FLOOR, TIER_BILL_AVG, CUP_PRIZE, EURO_PRIZE, fmtMoney } from './financeEngine';
 import {
   aiIncomingBids, aiWorldTransfers, expireIncomingBids, fax, maybeAiTradeFax, movePlayer, resolveOutgoingBid, returnLoans, windowFor, avgCa, valuePlayer,
 } from './transferEngine';
@@ -960,6 +960,7 @@ export function startNextSeason(g: GameState): void {
       body: `Welcome back. This season the board expects: ${club.board.goal.label}. Board confidence: ${Math.round(club.board.value)}%. Bank: ${fmtMoney(club.finances.bank)}. The summer window is open.`,
     });
   }
+  for (const c of Object.values(g.clubs)) if (!c.isShadow && c.id !== userId) trimToWageBudget(g, c); // AI wage bills stay inside what their income can carry
   // clubs still in the red after prize money and season-ticket income get a board bailout
   for (const c of Object.values(g.clubs)) {
     if (c.isShadow || c.finances.bank >= 0) continue;

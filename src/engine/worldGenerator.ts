@@ -2,6 +2,7 @@
  * World generation: 5 countries, 3 full tiers for the active nation, shadow
  * Tier 1s for the other four, staff, free agents and the 3 faxed job offers.
  */
+import { trimToWageBudget } from './financeEngine';
 import type { CountryCode, GameState, League, Tier } from '../types/world';
 import { COUNTRY_CODES } from '../types/world';
 import type { ArchetypeId, Club, BoardGoal } from '../types/club';
@@ -323,6 +324,7 @@ export function generateWorld(managerName: string, country: CountryCode, seed: n
   ensureFreeAgentCoverage(g, rng, country);
 
   generateStaffMarket(g, rng, country);
+  for (const c of Object.values(g.clubs)) if (!c.isShadow) trimToWageBudget(g, c);
 
   // initial European Cup entrants: top 3 by strength per Tier 1 + 4th from strongest nation
   const euroEntrants = initialEuroEntrants(g);

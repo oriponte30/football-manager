@@ -7,8 +7,8 @@ import { clamp } from './rng';
 
 // 1990s scale: income is tuned so a club's gates and TV money only just cover its wage bill
 // in-season gates and TV instalments roughly cover an average wage bill; the rollover injection below is the summer budget
-const TICKET: Record<Tier, number> = { 1: 11.5, 2: 5.4, 3: 3.5 };
-const TV_BASE: Record<Tier, number> = { 1: 2_600_000, 2: 460_000, 3: 110_000 };
+const TICKET: Record<Tier, number> = { 1: 11.5, 2: 5.4, 3: 4.6 };
+const TV_BASE: Record<Tier, number> = { 1: 2_600_000, 2: 460_000, 3: 140_000 };
 const WAGE_BASELINE: Record<Tier, number> = { 1: 320_000, 2: 75_000, 3: 28_000 };
 
 export function attendance(home: Club, away: Club, isDerby: boolean, competition: CompetitionKind): number {
@@ -74,6 +74,31 @@ export const TIER_BILL_AVG: Record<Tier, number> = { 1: 340_000, 2: 57_000, 3: 2
 /** Cash balance a board bailout restores. */
 export const BAILOUT_FLOOR: Record<Tier, number> = { 1: 750_000, 2: 250_000, 3: 100_000 };
 const RESTRUCTURE_LIMIT = 1.05; // weekly bill must be back within 105% of the tier average
+
+/**
+ * What a club can expect to earn per week in a normal league season: home gates (half the weeks)
+ * plus the TV instalment at mid-table. The wage budget is set against this, so it always makes sense.
+ */
+export function expectedWeeklyIncome(club: Club): number {
+  const gate = gateReceipts(club, { ...club, reputation: 40 }, false, 'LEAGUE').home;
+  return Math.round(((gate * 15) / 30 + weeklyTV(club, 8)) * 1.18); // calibrated against simulated seasons (cups and big games add gate money)
+}
+/** The weekly wage bill (players + staff) the club's income can carry. */
+export function wageBudget(club: Club): number {
+  return Math.round(expectedWeeklyIncome(club) * 0.95);
+}
+
+/** Set a club's player contracts so its weekly bill fits the wage budget (AI clubs and new worlds; never the user's). */
+export function trimToWageBudget(g: GameState, club: Club): void {
+  const w = weeklyWageBill(g, club);
+  const room = wageBudget(club) - w.staff;
+  if (w.players <= room || room <= 0) return;
+  const f = room / w.players;
+  for (const id of club.playerIds) {
+    const p = g.players[id];
+    if (p) p.contract.wage = Math.max(150, Math.round((p.contract.wage * f) / 10) * 10);
+  }
+}
 
 /** After a bailout, signings stay frozen until the wage bill is under control. */
 export function restructureBlock(g: GameState, club: Club): string | null {
