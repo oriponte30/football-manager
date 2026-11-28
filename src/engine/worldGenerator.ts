@@ -16,7 +16,7 @@ import { COUNTRIES } from '../data/countries';
 import { ARCHETYPES, ARCHETYPE_IDS } from '../data/archetypes';
 import { FORMATION_IDS, defaultRoles } from '../data/formations';
 import { rollNationality } from '../data/nationalities';
-import { createRng, clamp, type Rng } from './rng';
+import { createRng, clamp, hash01, type Rng } from './rng';
 import { nextId } from './ids';
 import { generatePlayer, SQUAD_TEMPLATE } from './playerGenerator';
 import { ensureFreeAgentCoverage, freeAgentPosition } from './freeAgentPool';
@@ -343,14 +343,17 @@ export function generateWorld(managerName: string, country: CountryCode, seed: n
 
 export function initialEuroEntrants(g: GameState): string[] {
   const entrants: string[] = [];
-  const nationStrength: { code: CountryCode; s: number; fourth: string }[] = [];
+  const fourths: { code: CountryCode; id: string }[] = [];
   for (const code of COUNTRY_CODES) {
     const lg = g.leagues[`${code}-1`];
     const ranked = lg.clubIds.map((id) => ({ id, s: squadStrength(g, g.clubs[id]) })).sort((a, b) => b.s - a.s);
     entrants.push(...ranked.slice(0, 3).map((r) => r.id));
-    nationStrength.push({ code, s: ranked.slice(0, 6).reduce((a, r) => a + r.s, 0), fourth: ranked[3].id });
+    if (ranked[3]) fourths.push({ code, id: ranked[3].id });
   }
-  nationStrength.sort((a, b) => b.s - a.s);
-  entrants.push(nationStrength[0].fourth);
+  // top three of every league, plus a random 4th-placed side from a country other than the player's
+  const home = g.manager.clubId && g.clubs[g.manager.clubId] ? g.clubs[g.manager.clubId].country : g.activeCountry;
+  const pool = fourths.filter((f) => f.code !== home);
+  const list = pool.length ? pool : fourths;
+  if (list.length) entrants.push(list[Math.floor(hash01(g.worldSeed ?? 1, 'euro16') * list.length) % list.length].id);
   return entrants;
 }

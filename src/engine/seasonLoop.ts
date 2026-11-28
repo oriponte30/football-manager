@@ -714,15 +714,17 @@ export function finalizeSeason(g: GameState, rng: Rng): void {
   }
   // European qualification for next season
   const euroEntrants: string[] = [];
-  const nation: { code: CountryCode; s: number; fourth: string }[] = [];
+  const fourths: { code: CountryCode; id: string }[] = [];
   for (const code of COUNTRY_CODES) {
     const t = sortedTable(g.leagues[`${code}-1`].table);
     euroEntrants.push(t[0].clubId, t[1].clubId, t[2].clubId);
-    nation.push({ code, s: t.slice(0, 6).reduce((acc, r) => acc + squadStrength(g, g.clubs[r.clubId]), 0), fourth: t[3].clubId });
+    if (t[3]) fourths.push({ code, id: t[3].clubId });
   }
-  const champ = g.euro.championId;
-  if (champ && !euroEntrants.includes(champ) && !relegated.includes(champ)) euroEntrants.push(champ);
-  else euroEntrants.push(nation.sort((x, y) => y.s - x.s)[0].fourth);
+  // only the top three of every league qualify; the 16th place goes to a random 4th-placed side from another country
+  const homeCode = g.manager.clubId && g.clubs[g.manager.clubId] ? g.clubs[g.manager.clubId].country : g.activeCountry;
+  const pool = fourths.filter((f) => f.code !== homeCode && !euroEntrants.includes(f.id));
+  const wild = pool.length ? rng.pick(pool) : fourths.find((f) => !euroEntrants.includes(f.id));
+  if (wild) euroEntrants.push(wild.id);
 
   // board verdict + manager career
   let boardVerdict = '';
@@ -991,12 +993,38 @@ function moveTier(g: GameState, club: Club, tier: Tier): void {
   club.leagueId = to.id;
 }
 
+/** The European knockout ties for this week as they will be drawn, so the week-ahead screen can show them (the final included). */
+function upcomingEuroTies(g: GameState, mw: number): Fixture[] {
+  const e = g.euro;
+  const mk = (a: string, b: string, label: string, k: number): Fixture => ({ id: `euro-preview-${mw}-${k}`, competition: 'EURO', matchweek: mw, homeId: a, awayId: b, played: false, homeGoals: 0, awayGoals: 0, penalties: null, winnerId: null, label });
+  const winners = (fx: Fixture[]) => fx.map((f) => f.winnerId).filter((x): x is string => !!x);
+  if (mw === EURO_QF_WEEK && e.quarterFinals.length === 0 && e.stage === 'QF') {
+    const st = euroGroupStandings(g);
+    if (st.length < 4) return [];
+    const pairs: [string, string][] = [[st[0][0], st[1][1]], [st[1][0], st[0][1]], [st[2][0], st[3][1]], [st[3][0], st[2][1]]];
+    return pairs.filter(([a, b]) => a && b).map(([a, b], i) => mk(a, b, 'Quarter-Final', i));
+  }
+  if (mw === EURO_SF_WEEK && e.semiFinals.length === 0 && e.stage === 'SF') {
+    const w = winners(e.quarterFinals);
+    const out: Fixture[] = [];
+    for (let i = 0; i + 1 < w.length; i += 2) out.push(mk(w[i], w[i + 1], 'Semi-Final', i));
+    return out;
+  }
+  if (mw === EURO_FINAL_WEEK && !e.final && e.stage === 'FINAL') {
+    const w = winners(e.semiFinals);
+    return w.length === 2 ? [mk(w[0], w[1], 'Final', 0)] : [];
+  }
+  return [];
+}
+
 export function userFixturesThisWeek(g: GameState): Fixture[] {
   const id = g.manager.clubId;
   if (!id) return [];
   const mw = g.season.matchweek;
   const out: Fixture[] = [];
   for (const f of g.euro.groupFixtures) if (f.matchweek === mw && (f.homeId === id || f.awayId === id)) out.push(f);
+  const koTie = upcomingEuroTies(g, mw).find((f) => f.homeId === id || f.awayId === id);
+  if (koTie) out.push(koTie);
   const cupIdx = CUP_WEEKS.indexOf(mw);
   if (cupIdx >= 0) {
     const round = g.cup.rounds[cupIdx];

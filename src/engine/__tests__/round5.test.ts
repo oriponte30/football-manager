@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { markWatched } from '../weekEngine';
 import { generateWorld } from '../worldGenerator';
-import { acceptJob, advanceMatchweek, startNextSeason, SEASON_WEEKS } from '../seasonLoop';
+import { userFixturesThisWeek, acceptJob, advanceMatchweek, startNextSeason, SEASON_WEEKS } from '../seasonLoop';
 import { windowFor, windowWeeks, aiIncomingBids } from '../transferEngine';
 import { INTAKE_WEEKS } from '../academyEngine';
 import { createRng } from '../rng';
@@ -372,5 +373,29 @@ describe('deals outside the window', () => {
     g.season.window = 'SUMMER';
     executeAgreedDeals(g);
     expect(g.players[bid!.playerId].clubId).toBe(bid!.buyerClubId);
+  });
+});
+
+describe('european cup', () => {
+  it('top three per league qualify, the 16th is a 4th-placed side from another country, and the user sees the knockout ties ahead', () => {
+    const g = career(631);
+    const home = g.clubs[g.manager.clubId!].country;
+    const per: Record<string, number> = {};
+    for (const id of g.euro.groups.flatMap((x) => x.clubIds)) per[g.clubs[id].country] = (per[g.clubs[id].country] ?? 0) + 1;
+    expect(Object.values(per).reduce((a, b) => a + b, 0)).toBe(16);
+    expect(per[home]).toBe(3);
+    expect(Object.values(per).filter((n) => n === 4)).toHaveLength(1);
+    const entrant = g.euro.groups.flatMap((x) => x.clubIds).find((id) => g.clubs[id].country === home)!;
+    g.manager.clubId = entrant;
+    let sawFinal = false;
+    for (let i = 0; i < 40 && g.season.matchweek <= 30; i++) {
+      const mw = g.season.matchweek;
+      const labels = userFixturesThisWeek(g).map((f) => f.label);
+      if (mw === 28 && labels.includes('Final')) sawFinal = true;
+      advanceMatchweek(g);
+      for (const r of g.lastUserResults) markWatched(g, r.id);
+      g.phase = 'PREP';
+    }
+    if (g.euro.final && (g.euro.final.homeId === entrant || g.euro.final.awayId === entrant)) expect(sawFinal).toBe(true);
   });
 });
